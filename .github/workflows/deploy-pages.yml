@@ -26,9 +26,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # Vite production build uses relative asset paths (see vite.config.ts)
+      # so /<repo>/ on GitHub Pages always resolves JS/CSS correctly.
       - name: Build
-        env:
-          BASE_PATH: /${{ github.event.repository.name }}/
         run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
