@@ -1,0 +1,42 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  background: radial-gradient(1200px 800px at 20% -10%, #152238 0%, #0a0f18 55%);
+  color: #e8eef6;
+  line-height: 1.45;
+}
+
+strong {
+  color: #fff;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.35rem;
+}
+
+p {
+  margin: 0 0 0.5rem;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
