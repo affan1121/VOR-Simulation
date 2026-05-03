@@ -16,7 +16,7 @@ import {
   radialFromStation,
   VOR_CDI_FULL_SCALE_DEG,
   vorCourseErrorDeg,
-  VOR_FLAG_BOUNDARY_COS_MAX,
+  vorOnToFromHemisphereBoundary,
   vorToFrom,
 } from '../utils/vorMath';
 import type { Position } from '../types';
@@ -310,10 +310,8 @@ export function useSimulation() {
 
     const signalOk = navSignalValid(dist);
     const inCone = inConeOfConfusion(dist, CONE_NM);
-    /** Geometric boundary only (no cone ambCos) — narrow band where |cos(r−OBS)| is ~0. */
-    const onToFromBoundary =
-      !inCone &&
-      vorToFrom(radial, obs, VOR_FLAG_BOUNDARY_COS_MAX) === 'AMBIGUOUS';
+    /** Split line OBS±90° only (sub-degree), not a wide cosine ambiguity band. */
+    const onToFromBoundary = !inCone && vorOnToFromHemisphereBoundary(radial, obs);
     const vorFlagsValid = signalOk && !inCone && !onToFromBoundary;
 
     return {

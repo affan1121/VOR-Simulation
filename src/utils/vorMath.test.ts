@@ -18,7 +18,8 @@ import {
   stationPassage,
   VOR_CDI_FULL_SCALE_DEG,
   vorCourseErrorDeg,
-  VOR_FLAG_BOUNDARY_COS_MAX,
+  VOR_FLAG_BOUNDARY_MAX_DEG,
+  vorOnToFromHemisphereBoundary,
   vorToFrom,
   windComponentsFrom,
   MAP_PLAN_VIEW_HALF_NM,
@@ -112,11 +113,15 @@ describe('vorToFrom', () => {
     expect(vorToFrom(0, 90)).toBe('AMBIGUOUS');
   });
 
-  it('VOR_FLAG_BOUNDARY_COS_MAX is stricter than default ambiguity (boundary only)', () => {
+  it('vorOnToFromHemisphereBoundary is sub-degree on OBS±90° line (not a wide cosine wedge)', () => {
+    expect(vorOnToFromHemisphereBoundary(90, 0)).toBe(true);
+    expect(vorOnToFromHemisphereBoundary(270, 0)).toBe(true);
+    expect(vorOnToFromHemisphereBoundary(90.25, 0)).toBe(false);
+    expect(vorOnToFromHemisphereBoundary(87, 0)).toBe(false);
+    /** Default vorToFrom ambiguity is still several degrees wide at 0.05 — flags do not use that. */
     expect(vorToFrom(87, 0)).toBe('FROM');
-    expect(vorToFrom(87, 0, VOR_FLAG_BOUNDARY_COS_MAX)).toBe('FROM');
-    expect(vorToFrom(90, 0, VOR_FLAG_BOUNDARY_COS_MAX)).toBe('AMBIGUOUS');
-    expect(vorToFrom(89, 0, VOR_FLAG_BOUNDARY_COS_MAX)).toBe('AMBIGUOUS');
+    expect(vorToFrom(87, 0, 0.05)).toBe('FROM');
+    expect(VOR_FLAG_BOUNDARY_MAX_DEG).toBeLessThan(0.5);
   });
 
   it('FROM/TO from aircraft position matches radial-based vorToFrom', () => {

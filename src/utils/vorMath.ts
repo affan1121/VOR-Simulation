@@ -79,10 +79,22 @@ export function vorToFrom(
 }
 
 /**
- * Tighter than the default 0.05 ambiguity: instrument flags go OFF only on/near the true TO/FROM
- * hemisphere edge (perpendicular to OBS through the station), not a few degrees into either side.
+ * Max angular gap (°) from the exact TO/FROM split line (radials OBS+90° / OBS−90°, i.e. perpendicular
+ * to the selected course through the station) before flags stay valid. Cosine thresholds widen to
+ * several degrees; this stays sub-degree so OFF does not appear “a couple of radials early.”
  */
-export const VOR_FLAG_BOUNDARY_COS_MAX = 0.02;
+export const VOR_FLAG_BOUNDARY_MAX_DEG = 0.22;
+
+/** True when the aircraft radial lies on that split line within {@link VOR_FLAG_BOUNDARY_MAX_DEG}. */
+export function vorOnToFromHemisphereBoundary(radialDeg: number, obsDeg: number): boolean {
+  const r = normalizeHeading(radialDeg);
+  const perp = normalizeHeading(obsDeg + 90);
+  const d = Math.min(
+    Math.abs(shortestSignedAngleDeg(r, perp)),
+    Math.abs(shortestSignedAngleDeg(r, reciprocalCourse(perp)))
+  );
+  return d <= VOR_FLAG_BOUNDARY_MAX_DEG;
+}
 
 /**
  * Radial value (bearing from station) that centers the CDI for current TO/FROM sense.
