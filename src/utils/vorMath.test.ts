@@ -18,10 +18,8 @@ import {
   stationPassage,
   VOR_CDI_FULL_SCALE_DEG,
   vorCourseErrorDeg,
-  vorInAbeamFlagZone,
+  VOR_FLAG_BOUNDARY_COS_MAX,
   vorToFrom,
-  vorHemisphereAbsCos,
-  VOR_ABEAM_FLAG_ABS_COS_MAX,
   windComponentsFrom,
   MAP_PLAN_VIEW_HALF_NM,
   MAP_PLAN_DME_MARGIN_NM,
@@ -114,14 +112,11 @@ describe('vorToFrom', () => {
     expect(vorToFrom(0, 90)).toBe('AMBIGUOUS');
   });
 
-  it('vorInAbeamFlagZone catches a wide perpendicular wedge vs tiny default ambiguity band', () => {
-    /** Default vorToFrom(87, 0)=FROM because |cos(87°)| ≈ 0.052 ≥ 0.05 — skips AMBIGUOUS edge. */
+  it('VOR_FLAG_BOUNDARY_COS_MAX is stricter than default ambiguity (boundary only)', () => {
     expect(vorToFrom(87, 0)).toBe('FROM');
-    expect(vorInAbeamFlagZone(87, 0)).toBe(true);
-    expect(vorHemisphereAbsCos(87, 0)).toBeLessThan(VOR_ABEAM_FLAG_ABS_COS_MAX);
-    expect(vorInAbeamFlagZone(90, 0)).toBe(true);
-    /** Far from abeam TO hemisphere */
-    expect(vorInAbeamFlagZone(10, 0)).toBe(false);
+    expect(vorToFrom(87, 0, VOR_FLAG_BOUNDARY_COS_MAX)).toBe('FROM');
+    expect(vorToFrom(90, 0, VOR_FLAG_BOUNDARY_COS_MAX)).toBe('AMBIGUOUS');
+    expect(vorToFrom(89, 0, VOR_FLAG_BOUNDARY_COS_MAX)).toBe('AMBIGUOUS');
   });
 
   it('FROM/TO from aircraft position matches radial-based vorToFrom', () => {

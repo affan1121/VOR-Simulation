@@ -16,7 +16,7 @@ import {
   radialFromStation,
   VOR_CDI_FULL_SCALE_DEG,
   vorCourseErrorDeg,
-  vorInAbeamFlagZone,
+  VOR_FLAG_BOUNDARY_COS_MAX,
   vorToFrom,
 } from '../utils/vorMath';
 import type { Position } from '../types';
@@ -26,8 +26,6 @@ export const PASSAGE_THRESHOLD_NM = 0.35;
 export const CONE_NM = 0.65;
 const TRAIL_MAX = 900;
 const TICK_MS = 1000 / 30;
-/** Abeam (hemisphere-ambiguous): TO/FROM flashes vs OFF ~this many times per second. */
-const ABEAM_FLAG_FLASH_HZ = 3.5;
 
 const SYMMETRIC_CHART_HALF_NM = MAP_PLAN_VIEW_HALF_NM - MAP_PLAN_DME_MARGIN_NM;
 
@@ -46,7 +44,7 @@ export interface SimSnapshot {
   courseErrorDeg: number;
   cdi: number;
   navValid: boolean;
-  /** TO/FROM flags usable — cone is steady OFF; abeam wedges flash OFF vs flags. */
+  /** TO/FROM flags usable — OFF only in cone (overhead) or on strict TO/FROM hemisphere boundary. */
   vorFlagsValid: boolean;
   inCone: boolean;
   passageMessageActive: boolean;
@@ -312,15 +310,11 @@ export function useSimulation() {
 
     const signalOk = navSignalValid(dist);
     const inCone = inConeOfConfusion(dist, CONE_NM);
-    /** Wider than rawTf ambiguity alone — otherwise crossings skip the wedge in one tick at nav speeds. */
-    const abeamFlagZone =
-      vorInAbeamFlagZone(radial, obs) ||
-      rawTf === 'AMBIGUOUS';
-    /** Cone: steady OFF; abeam wedge: biased flash so OFF dominates (readable). */
-    const abeamFlashShowsFlags =
-      Math.sin(simTime * 2 * Math.PI * ABEAM_FLAG_FLASH_HZ) > 0.4;
-    const vorFlagsValid =
-      signalOk && !inCone && (!abeamFlagZone || abeamFlashShowsFlags);
+    /** Geometric boundary only (no cone ambCos) — narrow band where |cos(r−OBS)| is ~0. */
+    const onToFromBoundary =
+      !inCone &&
+      vorToFrom(radial, obs, VOR_FLAG_BOUNDARY_COS_MAX) === 'AMBIGUOUS';
+    const vorFlagsValid = signalOk && !inCone && !onToFromBoundary;
 
     return {
       aircraft: { ...aircraft },

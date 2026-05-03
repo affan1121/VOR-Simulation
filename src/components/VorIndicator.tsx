@@ -22,7 +22,7 @@ type Props = {
   cdi: number;
   toFrom: 'TO' | 'FROM';
   navValid: boolean;
-  /** False when flags blank/steady OFF (cone); sim alternates rapidly abeam — OFF ⇄ TO/FR flashes. */
+  /** False when flags blank — overhead cone or strict TO/FROM hemisphere boundary only. */
   vorFlagsValid: boolean;
   inCone: boolean;
   obsInputRef?: RefObject<HTMLInputElement>;

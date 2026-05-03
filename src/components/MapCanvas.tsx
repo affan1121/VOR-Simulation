@@ -12,6 +12,9 @@ import {
 /** Keep aircraft symbol and labels inside the canvas (pixels from each edge toward center). */
 const MAP_EDGE_PAD_PX = 46;
 
+/** Keep the radial readout pill off the station “VOR” label (screen px). */
+const MIN_RADIAL_PILL_FROM_VOR_PX = 56;
+
 const NM_TO_PX = MAP_VIEW_NM_TO_PX;
 const VIEW_NM = MAP_PLAN_VIEW_HALF_NM;
 
@@ -362,9 +365,17 @@ export function MapCanvas({
       ctx.stroke();
       ctx.fillStyle = '#12261f';
       ctx.fill();
+      /* “VOR” below the fix (not over the ring); avoids overlap with radial pill when close to station. */
       ctx.fillStyle = '#8cf5c6';
       ctx.font = '600 11px Plus Jakarta Sans, sans-serif';
-      ctx.fillText('VOR', fix[0] - 12, fix[1] + 4);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const vorTy = fix[1] + 12 + 4;
+      ctx.strokeStyle = 'rgba(8, 14, 12, 0.92)';
+      ctx.lineWidth = 3;
+      ctx.strokeText('VOR', fix[0], vorTy);
+      ctx.fillStyle = '#8cf5c6';
+      ctx.fillText('VOR', fix[0], vorTy);
 
       const drawLineAngle = (deg: number, color: string, dash: number[] = [], lineWidth = 2) => {
         const rad = (deg * Math.PI) / 180;
@@ -607,10 +618,23 @@ export function MapCanvas({
         distAc < 0.12
           ? 2.9
           : Math.min(Math.max(distAc * 0.52, 1.1), VIEW_NM - 0.75);
-      const [rbx, rby] = worldToScreen(
+      let [rbx, rby] = worldToScreen(
         station.x + Math.sin(radRad) * labelAlongNm,
         station.y + Math.cos(radRad) * labelAlongNm
       );
+      {
+        const vx = rbx - fix[0];
+        const vy = rby - fix[1];
+        const d = Math.hypot(vx, vy);
+        if (d < MIN_RADIAL_PILL_FROM_VOR_PX && d > 1e-3) {
+          const s = MIN_RADIAL_PILL_FROM_VOR_PX / d;
+          rbx = fix[0] + vx * s;
+          rby = fix[1] + vy * s;
+        } else if (d <= 1e-3) {
+          rbx = fix[0];
+          rby = fix[1] + MIN_RADIAL_PILL_FROM_VOR_PX;
+        }
+      }
       const radialDigits = formatRadialDigits(radial);
       const tfColor =
         toFrom === 'TO' ? 'rgba(165, 210, 255, 0.98)' : 'rgba(235, 185, 145, 0.98)';

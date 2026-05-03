@@ -78,21 +78,11 @@ export function vorToFrom(
   return dot > 0 ? 'FROM' : 'TO';
 }
 
-/** |cos(rad − OBS)| near 0 = abeam OBS (hemisphere perpendicular to course). */
-export function vorHemisphereAbsCos(radialDeg: number, obsDeg: number): number {
-  const r = (normalizeHeading(radialDeg) * Math.PI) / 180;
-  const o = (normalizeHeading(obsDeg) * Math.PI) / 180;
-  return Math.abs(Math.cos(r - o));
-}
-
 /**
- * Angular wedge wider than vorToFrom’s default |cos|<0.05 ambiguity so crossings show several sim ticks OFF.
+ * Tighter than the default 0.05 ambiguity: instrument flags go OFF only on/near the true TO/FROM
+ * hemisphere edge (perpendicular to OBS through the station), not a few degrees into either side.
  */
-export const VOR_ABEAM_FLAG_ABS_COS_MAX = 0.18;
-
-export function vorInAbeamFlagZone(radialDeg: number, obsDeg: number): boolean {
-  return vorHemisphereAbsCos(radialDeg, obsDeg) < VOR_ABEAM_FLAG_ABS_COS_MAX;
-}
+export const VOR_FLAG_BOUNDARY_COS_MAX = 0.02;
 
 /**
  * Radial value (bearing from station) that centers the CDI for current TO/FROM sense.
