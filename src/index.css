@@ -16,6 +16,11 @@ body {
   background: radial-gradient(1200px 800px at 20% -10%, #152238 0%, #0a0f18 55%);
   color: #e8eef6;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 strong {

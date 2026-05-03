@@ -2,6 +2,12 @@
   max-width: 1440px;
   margin: 0 auto;
   padding: 1rem 1.25rem 2rem;
+  padding-left: max(1rem, calc(1rem + env(safe-area-inset-left, 0px)));
+  padding-right: max(1rem, calc(1rem + env(safe-area-inset-right, 0px)));
+  padding-bottom: max(2rem, calc(1rem + env(safe-area-inset-bottom, 0px)));
+  box-sizing: border-box;
+  width: 100%;
+  max-width: min(1440px, 100%);
 }
 
 .hero {
@@ -55,6 +61,10 @@
   grid-template-columns: 1.25fr 0.95fr 1fr;
   gap: 1rem;
   align-items: start;
+}
+
+.layout .col {
+  min-width: 0;
 }
 
 @media (max-width: 1100px) {
@@ -357,7 +367,7 @@
 
 .controls .ctl {
   display: grid;
-  grid-template-columns: 90px 1fr auto;
+  grid-template-columns: minmax(0, 90px) minmax(0, 1fr) auto;
   gap: 0.5rem;
   align-items: center;
   margin-bottom: 0.65rem;
@@ -410,13 +420,13 @@
 
 .ctl-heading-num-slider {
   display: grid;
-  grid-template-columns: minmax(76px, 104px) 1fr;
+  grid-template-columns: minmax(0, 104px) minmax(0, 1fr);
   gap: 0.45rem;
   align-items: center;
 }
 
 .controls .ctl.ctl-gs-row {
-  grid-template-columns: 90px minmax(76px, 104px) 1fr;
+  grid-template-columns: minmax(0, 90px) minmax(0, 104px) minmax(0, 1fr);
 }
 
 .ctl-gs-extra {
@@ -499,6 +509,14 @@
 
 .intercept-card h3 {
   margin-bottom: 0.35rem;
+}
+
+.intercept-card label.ctl {
+  display: grid;
+  grid-template-columns: minmax(0, 90px) minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.65rem;
 }
 
 .intercept-card .hint {
@@ -714,4 +732,156 @@
   background: rgba(255, 159, 67, 0.12);
   color: #ffc48a;
   border: 1px solid rgba(255, 159, 67, 0.35);
+}
+
+/* --- Narrow phones: stack rows and allow wrapping so text/controls don't overlap --- */
+@media (max-width: 560px) {
+  .hero h1 {
+    font-size: 1.35rem;
+    line-height: 1.2;
+  }
+
+  .sub {
+    font-size: 0.92rem;
+  }
+
+  .map-host {
+    height: min(50vh, 480px);
+    min-height: 240px;
+  }
+
+  .vor-readouts-simple {
+    grid-template-columns: 1fr;
+  }
+
+  .status-strip {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .controls .ctl,
+  .controls .ctl.ctl-heading-row,
+  .controls .ctl.ctl-gs-row,
+  .intercept-card label.ctl {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .controls .ctl > span:first-child,
+  .intercept-card label.ctl > span:first-child {
+    margin-bottom: 0.1rem;
+  }
+
+  .controls .ctl.ctl-checkbox {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+  }
+
+  .controls .ctl.ctl-checkbox .ctl-check {
+    margin-top: 0.15rem;
+  }
+
+  .ctl-heading-num-slider {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ctl-heading-num-slider .num.wide {
+    width: 100%;
+    max-width: none;
+  }
+
+  .turn-btns {
+    grid-column: 1;
+    justify-content: flex-start;
+  }
+
+  .controls .ctl input[type='range'],
+  .intercept-card label.ctl input[type='range'] {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .controls .ctl .num,
+  .controls .ctl .num.wide,
+  .intercept-card label.ctl .num,
+  .intercept-card label.ctl .num.wide {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+  }
+
+  .ctl-gs-extra {
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 0;
+  }
+
+  .ctl-gs-range {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ctl-val {
+    min-width: 0;
+  }
+
+  .ctl-hint {
+    overflow-wrap: break-word;
+  }
+
+  .sim-status {
+    line-height: 1.35;
+    text-align: center;
+  }
+
+  .seg {
+    flex-direction: column;
+  }
+
+  .seg .btn {
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+  }
+
+  .start-here-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: 0.35rem;
+  }
+
+  .cmd {
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .map-legend {
+    row-gap: 0.35rem;
+  }
+}
+
+@media (max-width: 400px) {
+  .scenario-desc,
+  .scenario-bar-simple .scenario-desc {
+    font-size: 0.82rem;
+  }
+
+  .passage-banner {
+    font-size: 0.88rem;
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+    line-height: 1.38;
+    text-wrap: balance;
+  }
+
+  .intercept-heading-lead,
+  .intercept-heading-sub {
+    font-size: 0.87rem;
+  }
+
+  .foot-simple {
+    font-size: 0.76rem;
+  }
 }

@@ -100,7 +100,7 @@ export default function App() {
 
       <header className="hero">
         <div>
-          <h1>VOR trainer</h1>
+          <h1>INRAT Exam Prep VOR Simulator</h1>
           <p className="sub">
             Use <strong>Student: heading + GS</strong> to type heading and ground speed, or use wind with airspeed. Set
             intercept angle by number under Intercept.
