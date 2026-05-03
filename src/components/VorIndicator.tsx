@@ -3,9 +3,15 @@ import { useCallback, useRef } from 'react';
 import {
   DME_EDIT_MAX_NM,
   DME_EDIT_MIN_NM,
+  MAP_PLAN_DME_MARGIN_NM,
+  MAP_PLAN_VIEW_HALF_NM,
+  maxDistanceNmAlongRadialInExtents,
   VOR_CDI_DOT_STEP_DEG,
   VOR_CDI_FULL_SCALE_DEG,
 } from '../utils/vorMath';
+
+const SYMMETRIC_CHART_HALF_NM_FALLBACK =
+  MAP_PLAN_VIEW_HALF_NM - MAP_PLAN_DME_MARGIN_NM;
 
 type Props = {
   obs: number;
@@ -16,13 +22,15 @@ type Props = {
   cdi: number;
   toFrom: 'TO' | 'FROM';
   navValid: boolean;
-  /** False over station — TO/FROM flags blank like a real VOR. */
+  /** False when flags blank/steady OFF (cone); sim alternates rapidly abeam — OFF ⇄ TO/FR flashes. */
   vorFlagsValid: boolean;
   inCone: boolean;
   obsInputRef?: RefObject<HTMLInputElement>;
   onObsChange: (v: number) => void;
   /** When set, DME readout becomes a control (moves aircraft along current radial). */
   onSetDistanceNm?: (nm: number) => void;
+  /** Plan map ±NM from station (east/north) — caps DME so the airplane stays on the canvas. */
+  dmeViewportHalfNm?: { halfEastNm: number; halfNorthNm: number };
 };
 
 /** Bearing in degrees → SVG coords on circle radius r from center (cx,cy). North = up. */
@@ -145,7 +153,7 @@ export function VorIndicator({
   obs,
   heading,
   bearingToStation: _bearingToStation,
-  radial: _radial,
+  radial,
   dmeNm,
   cdi,
   toFrom,
@@ -155,14 +163,22 @@ export function VorIndicator({
   obsInputRef,
   onObsChange,
   onSetDistanceNm,
+  dmeViewportHalfNm,
 }: Props) {
   const needleX = cdi * CDI_PX_FULL;
   const cx = 110;
   const cy = 110;
   const indicatorOk = navValid && vorFlagsValid;
   const flagsOk = vorFlagsValid;
-  /** Nav OK but TO/FROM blanked — station passage zone */
-  const passageBlanking = navValid && !vorFlagsValid;
+  /** Dashed cue — overhead / cone passage only (abeam ambiguity uses OFF flag without this bar). */
+  const passageBlanking = navValid && inCone;
+
+  /** Match map semantics: blue = TO hemisphere, warm = outbound / FROM (“FR”). */
+  const toFromFlagPalette = !flagsOk
+    ? { boxFill: '#0d1219', boxStroke: '#4a4f58', labelFill: '#6a7585' as const }
+    : toFrom === 'TO'
+      ? { boxFill: '#121f30', boxStroke: '#4690dc', labelFill: '#c5e8ff' as const }
+      : { boxFill: '#221711', boxStroke: '#b67a52', labelFill: '#ffd6b8' as const };
 
   const ticks: ReactNode[] = [];
   for (let t = 0; t < 360; t += 5) {
@@ -285,8 +301,8 @@ export function VorIndicator({
           width="34"
           height="16"
           rx="4"
-          fill="#0d1219"
-          stroke={flagsOk ? '#5a7a9a' : '#4a4f58'}
+          fill={toFromFlagPalette.boxFill}
+          stroke={toFromFlagPalette.boxStroke}
           strokeWidth="1.2"
           opacity={0.98}
         />
@@ -295,7 +311,7 @@ export function VorIndicator({
           y={cy - 27}
           textAnchor="middle"
           dominantBaseline="middle"
-          fill={flagsOk ? '#c9f0ff' : '#6a7585'}
+          fill={toFromFlagPalette.labelFill}
           fontSize="10"
           fontWeight="800"
           fontFamily="JetBrains Mono, monospace"
@@ -379,7 +395,12 @@ export function VorIndicator({
         <Readout label="CRS" value={`${Math.round(obs).toString().padStart(3, '0')}°`} hint="OBS selected course" />
         <Readout label="HDG" value={`${Math.round(heading).toString().padStart(3, '0')}°`} hint="Heading" />
         {onSetDistanceNm ? (
-          <DmeControl dmeNm={dmeNm} onChange={onSetDistanceNm} />
+          <DmeControl
+            radialDeg={radial}
+            dmeNm={dmeNm}
+            viewportHalfNm={dmeViewportHalfNm}
+            onChange={onSetDistanceNm}
+          />
         ) : (
           <Readout label="DME" value={`${dmeNm.toFixed(1)} NM`} hint="Distance" />
         )}
@@ -389,29 +410,40 @@ export function VorIndicator({
 }
 
 function DmeControl({
+  radialDeg,
   dmeNm,
+  viewportHalfNm,
   onChange,
 }: {
+  radialDeg: number;
   dmeNm: number;
+  viewportHalfNm?: { halfEastNm: number; halfNorthNm: number };
   onChange: (nm: number) => void;
 }) {
+  const he = viewportHalfNm?.halfEastNm ?? SYMMETRIC_CHART_HALF_NM_FALLBACK;
+  const hn = viewportHalfNm?.halfNorthNm ?? SYMMETRIC_CHART_HALF_NM_FALLBACK;
+  const maxNm = Math.min(
+    DME_EDIT_MAX_NM,
+    maxDistanceNmAlongRadialInExtents(radialDeg, he, hn)
+  );
   const clamp = (n: number) =>
-    Math.max(DME_EDIT_MIN_NM, Math.min(DME_EDIT_MAX_NM, n));
-  const safe = clamp(Number.isFinite(dmeNm) ? dmeNm : DME_EDIT_MIN_NM);
+    Math.max(DME_EDIT_MIN_NM, Math.min(maxNm, n));
+  const displayNm = Number.isFinite(dmeNm) ? dmeNm : DME_EDIT_MIN_NM;
+  const sliderNm = clamp(displayNm);
 
   return (
     <div
       className="vor-readout vor-readout-dme"
-      title="Distance from station (NM). Adjusts position along your current radial."
+      title="Distance from station (NM) along your current radial. Slider is limited so the airplane stays on the plan map."
     >
       <span className="vor-readout-label">DME (NM)</span>
       <div className="vor-dme-row">
         <input
           type="number"
           min={DME_EDIT_MIN_NM}
-          max={DME_EDIT_MAX_NM}
+          max={maxNm}
           step={0.1}
-          value={safe.toFixed(1)}
+          value={displayNm.toFixed(1)}
           onChange={(e) => {
             const v = Number(e.target.value);
             if (!Number.isFinite(v)) return;
@@ -424,9 +456,9 @@ function DmeControl({
       <input
         type="range"
         min={DME_EDIT_MIN_NM}
-        max={DME_EDIT_MAX_NM}
+        max={maxNm}
         step={0.5}
-        value={safe}
+        value={sliderNm}
         onChange={(e) => onChange(Number(e.target.value))}
         className="vor-dme-slider"
         aria-label="DME distance"

@@ -1,7 +1,12 @@
+import type { Position } from '../types';
+
 /**
  * VOR navigation math for training simulation.
  * Coordinate system: +Y = north, +X = east (magnetic). Distances in NM.
  */
+
+/** Maximum lead angle (°) selectable in the intercept panel. */
+export const INTERCEPT_LEAD_ANGLE_MAX_DEG = 90;
 
 /** Course-error ° that pegs the CDI (training VOR). */
 export const VOR_CDI_FULL_SCALE_DEG = 10;
@@ -73,6 +78,22 @@ export function vorToFrom(
   return dot > 0 ? 'FROM' : 'TO';
 }
 
+/** |cos(rad − OBS)| near 0 = abeam OBS (hemisphere perpendicular to course). */
+export function vorHemisphereAbsCos(radialDeg: number, obsDeg: number): number {
+  const r = (normalizeHeading(radialDeg) * Math.PI) / 180;
+  const o = (normalizeHeading(obsDeg) * Math.PI) / 180;
+  return Math.abs(Math.cos(r - o));
+}
+
+/**
+ * Angular wedge wider than vorToFrom’s default |cos|<0.05 ambiguity so crossings show several sim ticks OFF.
+ */
+export const VOR_ABEAM_FLAG_ABS_COS_MAX = 0.18;
+
+export function vorInAbeamFlagZone(radialDeg: number, obsDeg: number): boolean {
+  return vorHemisphereAbsCos(radialDeg, obsDeg) < VOR_ABEAM_FLAG_ABS_COS_MAX;
+}
+
 /**
  * Radial value (bearing from station) that centers the CDI for current TO/FROM sense.
  * FROM: on-course when radial === OBS (tracking outbound along OBS).
@@ -86,8 +107,9 @@ export function referenceRadialForCdi(obsDeg: number, toFrom: 'TO' | 'FROM'): nu
 
 /**
  * Signed angular error off the selected course line (degrees).
- * Positive ⇒ aircraft is to the **right** of the course line when facing outbound along OBS.
- * The simulator negates needle deflection from this value so the CDI reads FAA-style (toward needle).
+ * Positive ⇒ aircraft radial is clockwise from the reference radial ⇒ typically **right** of the OBS
+ * course line when looking outbound from the station along OBS.
+ * Needle deflection uses this sign directly: positive error ⇒ CDI toward the right ⇒ fly right toward the needle.
  */
 export function vorCourseErrorDeg(
   radialDeg: number,
@@ -100,8 +122,7 @@ export function vorCourseErrorDeg(
 
 /**
  * CDI scale: full needle deflection at ±fullScaleDeg (typically 10° for VOR).
- * Returns raw -1..1 from course error (positive course error ⇒ positive raw).
- * Snapshot applies a sign flip so +needle on the gauge means “fly right.”
+ * Returns -1..1 proportional to course error (same sign as {@link vorCourseErrorDeg}).
  */
 export function cdiNeedleDeflection(
   courseErrorDeg: number,
@@ -131,6 +152,52 @@ export function stationPassage(distanceNmVal: number, thresholdNm = 0.35): boole
 /** Min/max distance (NM) for the DME distance control — matches typical VOR nav envelope. */
 export const DME_EDIT_MIN_NM = 0.05;
 export const DME_EDIT_MAX_NM = 120;
+
+/** Plan-map half-span from station (+X east, +Y north) — keeps shaded area aligned with MapCanvas. */
+export const MAP_PLAN_VIEW_HALF_NM = 22;
+/** Drag/DME inset (NM): stay inside plotted square corners at ±{@link MAP_PLAN_VIEW_HALF_NM}. */
+export const MAP_PLAN_DME_MARGIN_NM = 0.4;
+/** World NM per CSS pixel — must match MapCanvas drawing scale. */
+export const MAP_VIEW_NM_TO_PX = 22;
+
+/** Max DME (NM) along `radialDeg` staying inside ±halfEast / ±halfNorth NM of the station. */
+export function maxDistanceNmAlongRadialInExtents(
+  radialDeg: number,
+  halfEastNm: number,
+  halfNorthNm: number
+): number {
+  const r = (normalizeHeading(radialDeg) * Math.PI) / 180;
+  const as = Math.abs(Math.sin(r));
+  const ac = Math.abs(Math.cos(r));
+  const eps = 1e-15;
+  return Math.min(
+    halfEastNm / Math.max(as, eps),
+    halfNorthNm / Math.max(ac, eps)
+  );
+}
+
+/** Legacy symmetric bounds (square chart); see {@link maxDistanceNmAlongRadialInExtents} for rectangular viewports. */
+export function maxDistanceNmAlongRadialInPlanView(
+  radialDeg: number,
+  halfExtentNm = MAP_PLAN_VIEW_HALF_NM - MAP_PLAN_DME_MARGIN_NM
+): number {
+  return maxDistanceNmAlongRadialInExtents(radialDeg, halfExtentNm, halfExtentNm);
+}
+
+/** Clamp aircraft NM position to an east/north-aligned box centred on station. */
+export function clampAircraftPositionToStationExtents(
+  station: Position,
+  p: Position,
+  halfEastNm: number,
+  halfNorthNm: number
+): Position {
+  const rx = p.x - station.x;
+  const ry = p.y - station.y;
+  const cxx = Math.max(-halfEastNm, Math.min(halfEastNm, rx));
+  const cyy = Math.max(-halfNorthNm, Math.min(halfNorthNm, ry));
+  if (cxx === rx && cyy === ry) return p;
+  return { x: station.x + cxx, y: station.y + cyy };
+}
 
 export function navSignalValid(distanceNmVal: number, maxNm = 120): boolean {
   return distanceNmVal <= maxNm;
@@ -171,12 +238,16 @@ export function crossTrackSign(
 }
 
 /**
- * Recommended intercept heading to join `targetRadial`.
- * INBOUND: fly toward station on that radial — established inbound heading = reciprocal(targetRadial).
- * OUTBOUND: established heading = targetRadial.
- * Uses lead-angle geometry: from the "right" of the course line (outbound along `targetRadial`),
- * subtract the intercept angle from the on-course heading so you turn left and cut in (and vice versa).
- * Same ±rule for INBOUND and OUTBOUND — outbound branch matched INBOUND signs (Feb 2026 fix).
+ * Recommended magnetic heading to join the **target radial** with a lead angle.
+ *
+ * The course line in space is always the ray from the station along `targetRadial` (same line for
+ * inbound and outbound; only the on-course heading differs).
+ *
+ * - **OUTBOUND** on R-###: established heading = `targetRadial`.
+ * - **INBOUND** on R-###: established heading = reciprocal(`targetRadial`) (toward the station on that line).
+ *
+ * Lateral side uses {@link crossTrackSign} on that ray. From the right of the line, subtract the
+ * intercept angle from the on-course heading (cut in with a left turn component); from the left, add it.
  */
 export function recommendedInterceptHeading(params: {
   aircraft: { x: number; y: number };
@@ -196,20 +267,23 @@ export function recommendedInterceptHeading(params: {
   const currentRadial = radialFromStation(station, aircraft);
   const brgTo = bearingToStation(currentRadial);
   const target = normalizeHeading(targetRadial);
+  /** Treat ~on the line as “left” so lead angle is deterministic (either side ± lead is symmetric for training). */
+  const crossEps = 1e-6;
   const side = crossTrackSign(station, aircraft, target);
-  const joinFromRight = side > 0;
+  const joinFromRight = side > crossEps;
+  const lead = Math.max(0, interceptAngleDeg);
 
   let interceptHeading: number;
-  if (mode === 'INBOUND') {
+  if (lead <= 0) {
+    interceptHeading = onCourseHeading(target, mode);
+  } else if (mode === 'INBOUND') {
     const inboundHdg = reciprocalCourse(target);
     interceptHeading = normalizeHeading(
-      inboundHdg + (joinFromRight ? -interceptAngleDeg : interceptAngleDeg)
+      inboundHdg + (joinFromRight ? -lead : lead)
     );
   } else {
     const outboundHdg = target;
-    interceptHeading = normalizeHeading(
-      outboundHdg + (joinFromRight ? -interceptAngleDeg : interceptAngleDeg)
-    );
+    interceptHeading = normalizeHeading(outboundHdg + (joinFromRight ? -lead : lead));
   }
 
   const turnDir =

@@ -9,6 +9,7 @@ import {
   inConeOfConfusion,
   navSignalValid,
   normalizeHeading,
+  onCourseHeading,
   radialFromStation,
   reciprocalCourse,
   recommendedInterceptHeading,
@@ -17,8 +18,16 @@ import {
   stationPassage,
   VOR_CDI_FULL_SCALE_DEG,
   vorCourseErrorDeg,
+  vorInAbeamFlagZone,
   vorToFrom,
+  vorHemisphereAbsCos,
+  VOR_ABEAM_FLAG_ABS_COS_MAX,
   windComponentsFrom,
+  MAP_PLAN_VIEW_HALF_NM,
+  MAP_PLAN_DME_MARGIN_NM,
+  maxDistanceNmAlongRadialInPlanView,
+  maxDistanceNmAlongRadialInExtents,
+  clampAircraftPositionToStationExtents,
 } from './vorMath';
 
 describe('normalizeHeading', () => {
@@ -72,6 +81,9 @@ describe('bearingToStation', () => {
 });
 
 describe('vorToFrom', () => {
+  /** cos(|r−o|)<0 → TO hemisphere; ambiguity threshold 0 for explicit edges in unit tests below. */
+  const noAmb = 0;
+
   it('FROM when on outbound side of OBS', () => {
     expect(vorToFrom(360, 360, 0)).toBe('FROM');
     expect(vorToFrom(90, 90, 0)).toBe('FROM');
@@ -79,6 +91,52 @@ describe('vorToFrom', () => {
   it('TO when on inbound side', () => {
     expect(vorToFrom(180, 360, 0)).toBe('TO');
     expect(vorToFrom(270, 90, 0)).toBe('TO');
+  });
+
+  it('matches cos(r−o) hemisphere for every cardinal OBS × offset radial (no threshold)', () => {
+    const obsList = [0, 90, 180, 270, 360];
+    const deltas = [-60, -30, 30, 60];
+    for (const obs of obsList) {
+      for (const d of deltas) {
+        const r = normalizeHeading(obs + d);
+        const cosab = Math.cos(
+          ((normalizeHeading(r) - normalizeHeading(obs)) * Math.PI) / 180
+        );
+        const expected = cosab > 0 ? 'FROM' : 'TO';
+        expect(vorToFrom(r, obs, noAmb)).toBe(expected);
+      }
+    }
+  });
+
+  it('is AMBIGUOUS when abeam (|cos| below default threshold)', () => {
+    expect(vorToFrom(90, 0)).toBe('AMBIGUOUS');
+    expect(vorToFrom(270, 0)).toBe('AMBIGUOUS');
+    expect(vorToFrom(0, 90)).toBe('AMBIGUOUS');
+  });
+
+  it('vorInAbeamFlagZone catches a wide perpendicular wedge vs tiny default ambiguity band', () => {
+    /** Default vorToFrom(87, 0)=FROM because |cos(87°)| ≈ 0.052 ≥ 0.05 — skips AMBIGUOUS edge. */
+    expect(vorToFrom(87, 0)).toBe('FROM');
+    expect(vorInAbeamFlagZone(87, 0)).toBe(true);
+    expect(vorHemisphereAbsCos(87, 0)).toBeLessThan(VOR_ABEAM_FLAG_ABS_COS_MAX);
+    expect(vorInAbeamFlagZone(90, 0)).toBe(true);
+    /** Far from abeam TO hemisphere */
+    expect(vorInAbeamFlagZone(10, 0)).toBe(false);
+  });
+
+  it('FROM/TO from aircraft position matches radial-based vorToFrom', () => {
+    const st = { x: 0, y: 0 };
+    const obs = 45;
+    const positions: { ac: { x: number; y: number }; expect: 'TO' | 'FROM' }[] = [
+      { ac: pointOnRadial(st, 45, 8), expect: 'FROM' },
+      { ac: pointOnRadial(st, 225, 8), expect: 'TO' },
+      { ac: pointOnRadial(st, 30, 8), expect: 'FROM' },
+      { ac: pointOnRadial(st, 240, 8), expect: 'TO' },
+    ];
+    for (const { ac, expect: exp } of positions) {
+      const r = radialFromStation(st, ac);
+      expect(vorToFrom(r, obs, noAmb)).toBe(exp);
+    }
   });
 });
 
@@ -97,12 +155,87 @@ describe('referenceRadialForCdi and vorCourseErrorDeg', () => {
     const e = vorCourseErrorDeg(10, 0, 'FROM');
     expect(cdiNeedleDeflection(e, VOR_CDI_FULL_SCALE_DEG)).toBe(1);
   });
+
+  it('zero course error exactly on reference radial for many OBS × TO/FROM', () => {
+    const obsValues = [0, 1, 90, 127, 180, 270, 359, 360];
+    for (const obs of obsValues) {
+      for (const tf of ['FROM', 'TO'] as const) {
+        const ref = referenceRadialForCdi(obs, tf);
+        expect(vorCourseErrorDeg(ref, obs, tf)).toBe(0);
+        expect(vorCourseErrorDeg(normalizeHeading(ref), obs, tf)).toBe(0);
+      }
+    }
+  });
+
+  it('course error equals shortest angle ref → aircraft radial', () => {
+    for (const obs of [0, 45, 90, 200]) {
+      for (const tf of ['FROM', 'TO'] as const) {
+        const ref = referenceRadialForCdi(obs, tf);
+        for (const off of [-9, -3, 3, 9]) {
+          const r = normalizeHeading(ref + off);
+          expect(vorCourseErrorDeg(r, obs, tf)).toBe(
+            shortestSignedAngleDeg(ref, r)
+          );
+        }
+      }
+    }
+  });
 });
 
-describe('cdiNeedleDeflection', () => {
+describe('cdiNeedleDeflection (course deviation indicator)', () => {
   it('clamps to ±1', () => {
     expect(cdiNeedleDeflection(15, VOR_CDI_FULL_SCALE_DEG)).toBe(1);
     expect(cdiNeedleDeflection(-20, VOR_CDI_FULL_SCALE_DEG)).toBe(-1);
+  });
+
+  it('linear within ±full scale', () => {
+    expect(cdiNeedleDeflection(0)).toBe(0);
+    expect(cdiNeedleDeflection(5)).toBe(0.5);
+    expect(cdiNeedleDeflection(-7.5)).toBe(-0.75);
+  });
+
+  it('needle sign tracks course-error sign (fly toward needle)', () => {
+    const pairs: [number, number][] = [
+      [4, 0.4],
+      [-6, -0.6],
+    ];
+    for (const [err, needle] of pairs) {
+      expect(cdiNeedleDeflection(err)).toBeCloseTo(needle, 10);
+      expect(Math.sign(cdiNeedleDeflection(err))).toBe(Math.sign(err));
+    }
+  });
+
+  it('FROM: right of OBS line ⇒ positive error ⇒ positive needle (geometry)', () => {
+    const st = { x: 0, y: 0 };
+    const obs = 90;
+    const acRight = { x: 10, y: -4 };
+    const acLeft = { x: 10, y: 4 };
+    const rR = radialFromStation(st, acRight);
+    const rL = radialFromStation(st, acLeft);
+    expect(crossTrackSign(st, acRight, obs)).toBeGreaterThan(0);
+    expect(crossTrackSign(st, acLeft, obs)).toBeLessThan(0);
+    expect(vorCourseErrorDeg(rR, obs, 'FROM')).toBeGreaterThan(0);
+    expect(vorCourseErrorDeg(rL, obs, 'FROM')).toBeLessThan(0);
+    expect(cdiNeedleDeflection(vorCourseErrorDeg(rR, obs, 'FROM'))).toBeGreaterThan(0);
+    expect(cdiNeedleDeflection(vorCourseErrorDeg(rL, obs, 'FROM'))).toBeLessThan(0);
+  });
+
+  it('TO: small perpendicular offset off the course line produces opposite signed errors', () => {
+    const st = { x: 0, y: 0 };
+    const obs = 90;
+    const ref = referenceRadialForCdi(obs, 'TO');
+    const base = pointOnRadial(st, ref, 10);
+    /** Course line is the ref radial through the station; offset locally north/south (not along the radial). */
+    const δ = 0.85;
+    const plusN = { x: base.x, y: base.y + δ };
+    const minusN = { x: base.x, y: base.y - δ };
+    const errP = vorCourseErrorDeg(radialFromStation(st, plusN), obs, 'TO');
+    const errM = vorCourseErrorDeg(radialFromStation(st, minusN), obs, 'TO');
+    expect(errP).not.toBe(0);
+    expect(errM).not.toBe(0);
+    expect(Math.sign(errP)).toBe(-Math.sign(errM));
+    expect(Math.sign(errP)).toBe(Math.sign(cdiNeedleDeflection(errP)));
+    expect(Math.sign(errM)).toBe(Math.sign(cdiNeedleDeflection(errM)));
   });
 });
 
@@ -142,6 +275,89 @@ describe('wind and ground track', () => {
 
 describe('recommendedInterceptHeading', () => {
   const st = { x: 0, y: 0 };
+
+  it('0° lead returns established on-course heading (no fictitious intercept)', () => {
+    const ac = { x: 12, y: -4 };
+    const tgt = 90;
+    expect(
+      recommendedInterceptHeading({
+        aircraft: ac,
+        station: st,
+        targetRadial: tgt,
+        mode: 'OUTBOUND',
+        interceptAngleDeg: 0,
+        currentHeading: 200,
+      }).heading
+    ).toBe(onCourseHeading(tgt, 'OUTBOUND'));
+    expect(
+      recommendedInterceptHeading({
+        aircraft: ac,
+        station: st,
+        targetRadial: tgt,
+        mode: 'INBOUND',
+        interceptAngleDeg: 0,
+        currentHeading: 200,
+      }).heading
+    ).toBe(onCourseHeading(tgt, 'INBOUND'));
+  });
+
+  it('every cardinal target × mode × lateral side: intercept matches closed-form lead', () => {
+    const lead = 38;
+    const alongNm = 14;
+    const crossNm = 6;
+    const targets = [0, 90, 180, 270] as const;
+
+    for (const tgt of targets) {
+      for (const mode of ['OUTBOUND', 'INBOUND'] as const) {
+        const rightPt = offsetPerpendicularAlongRadial(st, tgt, alongNm, crossNm);
+        const leftPt = offsetPerpendicularAlongRadial(st, tgt, alongNm, -crossNm);
+
+        expect(crossTrackSign(st, rightPt, tgt)).toBeGreaterThan(0);
+        expect(crossTrackSign(st, leftPt, tgt)).toBeLessThan(0);
+
+        const established = onCourseHeading(tgt, mode);
+        const expectRight = normalizeHeading(established - lead);
+        const expectLeft = normalizeHeading(established + lead);
+
+        const gotRight = recommendedInterceptHeading({
+          aircraft: rightPt,
+          station: st,
+          targetRadial: tgt,
+          mode,
+          interceptAngleDeg: lead,
+          currentHeading: 0,
+        }).heading;
+
+        const gotLeft = recommendedInterceptHeading({
+          aircraft: leftPt,
+          station: st,
+          targetRadial: tgt,
+          mode,
+          interceptAngleDeg: lead,
+          currentHeading: 0,
+        }).heading;
+
+        expect(gotRight).toBe(expectRight);
+        expect(gotLeft).toBe(expectLeft);
+      }
+    }
+  });
+
+  it('reports turn direction consistent with shortest path to intercept heading', () => {
+    const r = recommendedInterceptHeading({
+      aircraft: { x: 8, y: -3 },
+      station: st,
+      targetRadial: 90,
+      mode: 'OUTBOUND',
+      interceptAngleDeg: 45,
+      currentHeading: 10,
+    });
+    expect(r.turn).toBe(
+      shortestSignedAngleDeg(10, r.heading) >= 0 ? 'RIGHT' : 'LEFT'
+    );
+    expect(r.currentRadial).toBe(radialFromStation(st, { x: 8, y: -3 }));
+    expect(r.bearingToStation).toBe(bearingToStation(r.currentRadial));
+  });
 
   it('OUTBOUND: south of east-west course subtracts lead (left turn toward course)', () => {
     const r = recommendedInterceptHeading({
@@ -206,3 +422,82 @@ describe('crossTrackSign', () => {
     expect(crossTrackSign(st, { x: 0, y: 5 }, 90)).not.toBe(0);
   });
 });
+
+describe('maxDistanceNmAlongRadialInExtents', () => {
+  it('uses separate east vs north halves (narrow canvas)', () => {
+    expect(maxDistanceNmAlongRadialInExtents(90, 10.2, 20)).toBeCloseTo(10.2, 10);
+    expect(maxDistanceNmAlongRadialInExtents(0, 10.2, 20)).toBeCloseTo(20, 10);
+    expect(maxDistanceNmAlongRadialInExtents(180, 10.2, 20)).toBeCloseTo(20, 10);
+  });
+});
+
+describe('clampAircraftPositionToStationExtents', () => {
+  const st = { x: 0, y: 0 };
+  it('pins out-of-range east/north', () => {
+    const p = { x: 50, y: -3 };
+    const c = clampAircraftPositionToStationExtents(st, p, 12, 8);
+    expect(c.x).toBe(12);
+    expect(c.y).toBe(-3);
+    const q = { x: 1, y: -90 };
+    const c2 = clampAircraftPositionToStationExtents(st, q, 12, 8);
+    expect(c2.y).toBe(-8);
+  });
+});
+
+describe('maxDistanceNmAlongRadialInPlanView', () => {
+  const H = MAP_PLAN_VIEW_HALF_NM - MAP_PLAN_DME_MARGIN_NM;
+
+  it('cardinals are limited by half-span', () => {
+    expect(maxDistanceNmAlongRadialInPlanView(0, H)).toBeCloseTo(H, 10);
+    expect(maxDistanceNmAlongRadialInPlanView(90, H)).toBeCloseTo(H, 10);
+    expect(maxDistanceNmAlongRadialInPlanView(180, H)).toBeCloseTo(H, 10);
+    expect(maxDistanceNmAlongRadialInPlanView(270, H)).toBeCloseTo(H, 10);
+  });
+
+  it('diagonal allows farther DME before leaving the axis-aligned square', () => {
+    const d45 = maxDistanceNmAlongRadialInPlanView(45, H);
+    expect(d45).toBeCloseTo(H * Math.SQRT2, 10);
+  });
+
+  it('computed point stays inside the square', () => {
+    const d = maxDistanceNmAlongRadialInPlanView(37);
+    const r = (37 * Math.PI) / 180;
+    expect(Math.abs(Math.sin(r) * d)).toBeLessThanOrEqual(H + 1e-9);
+    expect(Math.abs(Math.cos(r) * d)).toBeLessThanOrEqual(H + 1e-9);
+  });
+});
+
+// --- helpers ---
+const ORIGIN = { x: 0, y: 0 };
+
+/** Point `nmOut` NM from station along radial FROM station TO aircraft bearing `radialDeg`. */
+function pointOnRadial(
+  station: typeof ORIGIN,
+  radialDeg: number,
+  nmOut: number
+): { x: number; y: number } {
+  const θ = (normalizeHeading(radialDeg) * Math.PI) / 180;
+  return {
+    x: station.x + Math.sin(θ) * nmOut,
+    y: station.y + Math.cos(θ) * nmOut,
+  };
+}
+
+/**
+ * Start `alongNm` out on `radialDeg`, then move `crossNm` perpendicular to that outbound ray
+ * (positive cross = {@link crossTrackSign} positive = “right” of the course).
+ */
+function offsetPerpendicularAlongRadial(
+  station: typeof ORIGIN,
+  radialDeg: number,
+  alongNm: number,
+  crossNm: number
+): { x: number; y: number } {
+  const θ = (normalizeHeading(radialDeg) * Math.PI) / 180;
+  const bx = station.x + Math.sin(θ) * alongNm;
+  const by = station.y + Math.cos(θ) * alongNm;
+  return {
+    x: bx + Math.cos(θ) * crossNm,
+    y: by - Math.sin(θ) * crossNm,
+  };
+}

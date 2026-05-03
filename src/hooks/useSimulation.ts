@@ -2,16 +2,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   bearingToStation,
   cdiNeedleDeflection,
+  clampAircraftPositionToStationExtents,
   DME_EDIT_MAX_NM,
   DME_EDIT_MIN_NM,
   distanceNm,
   groundVelocityKts,
   inConeOfConfusion,
+  MAP_PLAN_DME_MARGIN_NM,
+  MAP_PLAN_VIEW_HALF_NM,
+  maxDistanceNmAlongRadialInExtents,
   navSignalValid,
   normalizeHeading,
   radialFromStation,
   VOR_CDI_FULL_SCALE_DEG,
   vorCourseErrorDeg,
+  vorInAbeamFlagZone,
   vorToFrom,
 } from '../utils/vorMath';
 import type { Position } from '../types';
@@ -21,6 +26,10 @@ export const PASSAGE_THRESHOLD_NM = 0.35;
 export const CONE_NM = 0.65;
 const TRAIL_MAX = 900;
 const TICK_MS = 1000 / 30;
+/** Abeam (hemisphere-ambiguous): TO/FROM flashes vs OFF ~this many times per second. */
+const ABEAM_FLAG_FLASH_HZ = 3.5;
+
+const SYMMETRIC_CHART_HALF_NM = MAP_PLAN_VIEW_HALF_NM - MAP_PLAN_DME_MARGIN_NM;
 
 export interface SimSnapshot {
   aircraft: Position;
@@ -37,7 +46,7 @@ export interface SimSnapshot {
   courseErrorDeg: number;
   cdi: number;
   navValid: boolean;
-  /** TO/FROM flags usable (blanked over station like a real VOR). */
+  /** TO/FROM flags usable — cone is steady OFF; abeam wedges flash OFF vs flags. */
   vorFlagsValid: boolean;
   inCone: boolean;
   passageMessageActive: boolean;
@@ -88,6 +97,31 @@ export function useSimulation() {
   const directGsRef = useRef(120);
   const draggingAircraftRef = useRef(false);
 
+  /** Half-extents (east/north, NM) for keeping the airplane on the plan map canvas (see MapCanvas ResizeObserver). */
+  const [mapViewportHalfNm, setMapViewportHalfNm] = useState({
+    halfEastNm: SYMMETRIC_CHART_HALF_NM,
+    halfNorthNm: SYMMETRIC_CHART_HALF_NM,
+  });
+  const mapViewportHalfNmRef = useRef(mapViewportHalfNm);
+  mapViewportHalfNmRef.current = mapViewportHalfNm;
+
+  const registerMapViewportHalfNm = useCallback(
+    (ext: { halfEastNm: number; halfNorthNm: number }) => {
+      setMapViewportHalfNm((prev) => {
+        const e = Math.round(ext.halfEastNm * 4000) / 4000;
+        const n = Math.round(ext.halfNorthNm * 4000) / 4000;
+        if (
+          Math.abs(prev.halfEastNm - e) < 0.002 &&
+          Math.abs(prev.halfNorthNm - n) < 0.002
+        ) {
+          return prev;
+        }
+        return { halfEastNm: e, halfNorthNm: n };
+      });
+    },
+    []
+  );
+
   useEffect(() => {
     headingRef.current = heading;
     airspeedRef.current = airspeed;
@@ -106,22 +140,32 @@ export function useSimulation() {
   }, []);
 
   const moveAircraftTo = useCallback((p: Position) => {
-    const next = { x: p.x, y: p.y };
+    const v = mapViewportHalfNmRef.current;
+    const next = clampAircraftPositionToStationExtents(STATION, p, v.halfEastNm, v.halfNorthNm);
     setAircraft(next);
     trailRef.current = [{ ...next }];
   }, []);
 
   /** Sets slant-range DME by moving the aircraft along the current radial (bearing from station). */
   const setDistanceFromStation = useCallback((nm: number) => {
-    const d = Math.max(
-      DME_EDIT_MIN_NM,
-      Math.min(DME_EDIT_MAX_NM, Number(nm))
-    );
     setAircraft((prev) => {
+      const v = mapViewportHalfNmRef.current;
       const radialDeg = radialFromStation(STATION, prev);
+      const maxOnChart = Math.min(
+        DME_EDIT_MAX_NM,
+        maxDistanceNmAlongRadialInExtents(
+          radialDeg,
+          v.halfEastNm,
+          v.halfNorthNm
+        )
+      );
+      const dClamped = Math.max(
+        DME_EDIT_MIN_NM,
+        Math.min(maxOnChart, Number(nm))
+      );
       const rad = (radialDeg * Math.PI) / 180;
-      const east = Math.sin(rad) * d;
-      const north = Math.cos(rad) * d;
+      const east = Math.sin(rad) * dClamped;
+      const north = Math.cos(rad) * dClamped;
       const next = { x: STATION.x + east, y: STATION.y + north };
       trailRef.current = [{ ...next }];
       return next;
@@ -200,10 +244,17 @@ export function useSimulation() {
           east = gv.east;
           north = gv.north;
         }
-        const next = {
+        const v = mapViewportHalfNmRef.current;
+        let next = {
           x: prev.x + east * dtHr,
           y: prev.y + north * dtHr,
         };
+        next = clampAircraftPositionToStationExtents(
+          STATION,
+          next,
+          v.halfEastNm,
+          v.halfNorthNm
+        );
         const dist = distanceNm(STATION, next);
         if (stationPassageEdge(dist, passageInsideRef)) {
           setPassageBanner(true);
@@ -248,8 +299,8 @@ export function useSimulation() {
     }
 
     const courseErrorDeg = vorCourseErrorDeg(radial, obs, toFrom);
-    /** Raw ±10° scale then negate so gauge matches FAA sense: fly toward the needle (needle right ⇒ fly right). */
-    let cdi = -cdiNeedleDeflection(courseErrorDeg, VOR_CDI_FULL_SCALE_DEG);
+    /** ±10° scale: positive ⇒ needle toward +x on the gauge (right) ⇒ fly toward the needle (same as typical “toward/from” cockpit sense). */
+    let cdi = cdiNeedleDeflection(courseErrorDeg, VOR_CDI_FULL_SCALE_DEG);
     cdi = applyConeNoise(cdi, dist, simTime);
 
     const gv = directGroundSpeedMode
@@ -260,7 +311,16 @@ export function useSimulation() {
       : groundVelocityKts(heading, airspeed, windFrom, windSpeed);
 
     const signalOk = navSignalValid(dist);
-    const vorFlagsValid = signalOk && dist >= PASSAGE_THRESHOLD_NM;
+    const inCone = inConeOfConfusion(dist, CONE_NM);
+    /** Wider than rawTf ambiguity alone — otherwise crossings skip the wedge in one tick at nav speeds. */
+    const abeamFlagZone =
+      vorInAbeamFlagZone(radial, obs) ||
+      rawTf === 'AMBIGUOUS';
+    /** Cone: steady OFF; abeam wedge: biased flash so OFF dominates (readable). */
+    const abeamFlashShowsFlags =
+      Math.sin(simTime * 2 * Math.PI * ABEAM_FLAG_FLASH_HZ) > 0.4;
+    const vorFlagsValid =
+      signalOk && !inCone && (!abeamFlagZone || abeamFlashShowsFlags);
 
     return {
       aircraft: { ...aircraft },
@@ -278,7 +338,7 @@ export function useSimulation() {
       cdi,
       navValid: signalOk,
       vorFlagsValid,
-      inCone: inConeOfConfusion(dist, CONE_NM),
+      inCone,
       passageMessageActive: passageBanner,
       track: gv.track,
       groundSpeed: gv.groundSpeed,
@@ -331,6 +391,8 @@ export function useSimulation() {
     moveAircraftTo,
     setDistanceFromStation,
     setAircraftDragging,
+    mapViewportHalfNm,
+    registerMapViewportHalfNm,
   };
 }
 

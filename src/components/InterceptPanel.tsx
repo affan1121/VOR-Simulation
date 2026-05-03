@@ -1,5 +1,6 @@
 import type { InterceptMode } from '../utils/vorMath';
 import {
+  INTERCEPT_LEAD_ANGLE_MAX_DEG,
   normalizeHeading,
   reciprocalCourse,
   recommendedInterceptHeading,
@@ -102,19 +103,21 @@ export function InterceptPanel({
         <input
           type="range"
           min={0}
-          max={60}
+          max={INTERCEPT_LEAD_ANGLE_MAX_DEG}
           value={interceptAngle}
           onChange={(e) => onInterceptAngle(Number(e.target.value))}
         />
         <input
           type="number"
           min={0}
-          max={60}
+          max={INTERCEPT_LEAD_ANGLE_MAX_DEG}
           value={interceptAngle}
           onChange={(e) => {
             const v = Number(e.target.value);
             if (!Number.isFinite(v)) return;
-            onInterceptAngle(Math.max(0, Math.min(60, Math.round(v))));
+            onInterceptAngle(
+              Math.max(0, Math.min(INTERCEPT_LEAD_ANGLE_MAX_DEG, Math.round(v)))
+            );
           }}
           className="num wide"
           aria-label="Intercept angle degrees"

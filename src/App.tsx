@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Controls } from './components/Controls';
 import { InterceptPanel } from './components/InterceptPanel';
 import { MapCanvas } from './components/MapCanvas';
+import { StudentGuide } from './components/StudentGuide';
 import { TeachingPanel } from './components/TeachingPanel';
 import { StartHere } from './components/StartHere';
 import { VorIndicator } from './components/VorIndicator';
@@ -42,6 +43,8 @@ export default function App() {
     moveAircraftTo,
     setDistanceFromStation,
     setAircraftDragging,
+    mapViewportHalfNm,
+    registerMapViewportHalfNm,
   } = sim;
 
   const [scenarioId, setScenarioId] = useState<ScenarioId>('free');
@@ -161,6 +164,8 @@ export default function App() {
             interceptAngleDeg={interceptMapActive ? interceptAngle : undefined}
             onMoveAircraft={moveAircraftTo}
             onAircraftDragActive={setAircraftDragging}
+            planMapClampHalfNm={mapViewportHalfNm}
+            registerPlanMapViewportHalfNm={registerMapViewportHalfNm}
           />
         </div>
 
@@ -178,6 +183,7 @@ export default function App() {
             inCone={snapshot.inCone}
             onObsChange={(v) => setObs(v)}
             onSetDistanceNm={setDistanceFromStation}
+            dmeViewportHalfNm={mapViewportHalfNm}
           />
           <div className="status-strip card status-strip-simple">
             <span title="Ground speed">GS {Math.round(snapshot.groundSpeed)} kt</span>
@@ -238,6 +244,8 @@ export default function App() {
           behavior is a training approximation only.
         </p>
       </footer>
+
+      <StudentGuide />
     </div>
   );
 }

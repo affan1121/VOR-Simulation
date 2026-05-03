@@ -1,10 +1,19 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 import type { Position } from '../types';
-import { distanceNm } from '../utils/vorMath';
+import {
+  distanceNm,
+  DME_EDIT_MIN_NM,
+  MAP_PLAN_DME_MARGIN_NM,
+  MAP_PLAN_VIEW_HALF_NM,
+  MAP_VIEW_NM_TO_PX,
+} from '../utils/vorMath';
 
-const NM_TO_PX = 22;
-const VIEW_NM = 22;
+/** Keep aircraft symbol and labels inside the canvas (pixels from each edge toward center). */
+const MAP_EDGE_PAD_PX = 46;
+
+const NM_TO_PX = MAP_VIEW_NM_TO_PX;
+const VIEW_NM = MAP_PLAN_VIEW_HALF_NM;
 
 /** Reference radials on the plan-view map (N/E/S/W only). */
 const CARDINAL_RADIALS = [0, 90, 180, 270] as const;
@@ -33,6 +42,13 @@ type Props = {
   onMoveAircraft?: (p: Position) => void;
   /** True while pointer is dragging the aircraft. */
   onAircraftDragActive?: (active: boolean) => void;
+  /** Half-extents (NM) derived from canvas size — must match simulator clamp/DME caps. */
+  planMapClampHalfNm?: { halfEastNm: number; halfNorthNm: number };
+  /** Publish viewport half-extents when the map host is measured or resized. */
+  registerPlanMapViewportHalfNm?: (ext: {
+    halfEastNm: number;
+    halfNorthNm: number;
+  }) => void;
 };
 
 function dedupeVerts(pts: Position[], eps = 1e-4): Position[] {
@@ -134,6 +150,8 @@ export function MapCanvas({
   interceptAngleDeg,
   onMoveAircraft,
   onAircraftDragActive,
+  planMapClampHalfNm,
+  registerPlanMapViewportHalfNm,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -176,20 +194,44 @@ export function MapCanvas({
   }, [station]);
 
   useEffect(() => {
+    const el = hostRef.current;
+    const reg = registerPlanMapViewportHalfNm;
+    if (!el || !reg) return;
+
+    const publish = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      const hw = w / 2 - MAP_EDGE_PAD_PX;
+      const hh = h / 2 - MAP_EDGE_PAD_PX;
+      reg({
+        halfEastNm: Math.max(DME_EDIT_MIN_NM, hw / NM_TO_PX),
+        halfNorthNm: Math.max(DME_EDIT_MIN_NM, hh / NM_TO_PX),
+      });
+    };
+
+    publish();
+    const ro = new ResizeObserver(() => publish());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [registerPlanMapViewportHalfNm]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !onMoveAircraft) return;
 
     /* Center grab area — symbol spans ~±28 px */
     const HIT_PX = 52;
+    const symLim = VIEW_NM - MAP_PLAN_DME_MARGIN_NM;
 
     const screenToWorld = (px: number, py: number, cw: number, ch: number): Position => {
       const cx = cw / 2;
       const cy = ch / 2;
       let wx = (px - cx) / NM_TO_PX + stationRef.current.x;
       let wy = -(py - cy) / NM_TO_PX + stationRef.current.y;
-      const lim = VIEW_NM - 0.4;
-      wx = Math.max(-lim, Math.min(lim, wx));
-      wy = Math.max(-lim, Math.min(lim, wy));
+      const halfE = planMapClampHalfNm?.halfEastNm ?? symLim;
+      const halfN = planMapClampHalfNm?.halfNorthNm ?? symLim;
+      wx = Math.max(-halfE, Math.min(halfE, wx));
+      wy = Math.max(-halfN, Math.min(halfN, wy));
       return { x: wx, y: wy };
     };
 
@@ -258,7 +300,7 @@ export function MapCanvas({
       canvas.removeEventListener('pointercancel', finishDrag);
       canvas.removeEventListener('lostpointercapture', onLostCapture);
     };
-  }, [onMoveAircraft, onAircraftDragActive]);
+  }, [onMoveAircraft, onAircraftDragActive, planMapClampHalfNm]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -309,6 +351,7 @@ export function MapCanvas({
 
       const fromPoly = clipHalfPlaneSquare(station, obs, 'FROM', VIEW_NM);
       const toPoly = clipHalfPlaneSquare(station, obs, 'TO', VIEW_NM);
+      /** Fixed hues so halves do not change shade with OBS or aircraft position. */
       fillPolygonWorld(ctx, fromPoly, worldToScreen, 'rgba(118, 78, 52, 0.45)');
       fillPolygonWorld(ctx, toPoly, worldToScreen, 'rgba(42, 118, 210, 0.44)');
 

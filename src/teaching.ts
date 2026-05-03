@@ -68,8 +68,8 @@ export function explainCdiLeftRight(s: SimSnapshot): string {
   if (Math.abs(s.cdi) < 0.05) return 'CDI centered — no turn required for course.';
   const err = s.courseErrorDeg;
   if (err > 0)
-    return `Course puts you ${err.toFixed(1)}° right of reference — needle left of center — fly left toward the needle.`;
-  return `Course puts you ${Math.abs(err).toFixed(1)}° left of reference — needle right of center — fly right toward the needle.`;
+    return `Course puts you ${err.toFixed(1)}° right of reference — needle deflected **right** — fly **right** toward the needle.`;
+  return `Course puts you ${Math.abs(err).toFixed(1)}° left of reference — needle deflected **left** — fly **left** toward the needle.`;
 }
 
 export function explainInterceptTurn(
