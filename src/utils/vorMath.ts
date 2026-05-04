@@ -8,6 +8,12 @@ import type { Position } from '../types';
 /** Maximum lead angle (°) selectable in the intercept panel. */
 export const INTERCEPT_LEAD_ANGLE_MAX_DEG = 90;
 
+/**
+ * Angular tolerance (°) for treating the aircraft as established on the intercept target’s infinite
+ * radial line (either outbound or reciprocal inbound leg).
+ */
+export const INTERCEPT_ON_LINE_MAX_ERR_DEG = 2.5;
+
 /** Course-error ° that pegs the CDI (training VOR). */
 export const VOR_CDI_FULL_SCALE_DEG = 10;
 
@@ -41,6 +47,22 @@ export function shortestSignedAngleDeg(fromDeg: number, toDeg: number): number {
   if (d > 180) d -= 360;
   if (d < -180) d += 360;
   return d;
+}
+
+/**
+ * True when the aircraft lies on the infinite line through the station along `targetRadialDeg`
+ * (within `maxErrDeg` of either that radial or its reciprocal — outbound or inbound side).
+ */
+export function isOnInfiniteRadialLine(
+  aircraftRadialDeg: number,
+  targetRadialDeg: number,
+  maxErrDeg = INTERCEPT_ON_LINE_MAX_ERR_DEG
+): boolean {
+  const t = normalizeHeading(targetRadialDeg);
+  const r = normalizeHeading(aircraftRadialDeg);
+  const d1 = Math.abs(shortestSignedAngleDeg(t, r));
+  const d2 = Math.abs(shortestSignedAngleDeg(reciprocalCourse(t), r));
+  return Math.min(d1, d2) <= maxErrDeg;
 }
 
 /**

@@ -19,6 +19,8 @@ type Props = {
   onMode: (m: InterceptMode) => void;
   interceptAngle: number;
   onInterceptAngle: (a: number) => void;
+  /** False when lead &gt; 0 but the map overlay is hidden (e.g. established on target radial). */
+  interceptOverlayOnMap: boolean;
 };
 
 export function InterceptPanel({
@@ -30,6 +32,7 @@ export function InterceptPanel({
   onMode,
   interceptAngle,
   onInterceptAngle,
+  interceptOverlayOnMap,
 }: Props) {
   const rec = recommendedInterceptHeading({
     aircraft: snapshot.aircraft,
@@ -54,7 +57,8 @@ export function InterceptPanel({
       <h3>Intercept</h3>
       <p className="hint">
         Pick the radial you want to join and inbound vs outbound. Set the intercept angle (lead); use{' '}
-        <strong>0°</strong> to hide intercept lines on the map. Any angle above 0° shows the overlay again.
+        <strong>0°</strong> to hide intercept lines completely. With angle &gt; 0°, lines appear until you are established on
+        the target radial, then the map clears them automatically.
       </p>
       <ol className="intercept-steps">
         <li>
@@ -125,7 +129,7 @@ export function InterceptPanel({
         />
       </label>
 
-      {interceptAngle > 0 ? (
+      {interceptAngle > 0 && interceptOverlayOnMap ? (
         <div className="intercept-heading-answer" role="status">
           <p className="intercept-heading-lead">
             To intercept <strong>R-{tgtDigits}°</strong>{' '}
@@ -146,12 +150,19 @@ export function InterceptPanel({
             alone, to judge when you&apos;ve captured the radial.
           </p>
         </div>
-      ) : (
+      ) : null}
+      {interceptAngle > 0 && !interceptOverlayOnMap ? (
+        <p className="intercept-established-note fine" role="status">
+          You are on the <strong>R-{tgtDigits}°</strong> line (within a few degrees) — intercept lines are removed from
+          the map. Drift off the radial or set intercept angle to <strong>0°</strong> to turn the overlay off entirely.
+        </p>
+      ) : null}
+      {interceptAngle <= 0 ? (
         <p className="intercept-off-note fine" role="status">
           Intercept angle is <strong>0°</strong> — target radial and intercept-heading lines are hidden on the map. Set
-          the angle above 0° to show them again.
+          the angle above 0° to show them when you are not yet on the target line.
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

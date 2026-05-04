@@ -778,7 +778,7 @@ export function MapCanvas({
         </span>
         <span className="leg obs">OBS on instrument only — map shows boundary + fills</span>
         <span className="leg int">
-          violet (through VOR): target radial · bright violet (through airplane): intercept heading to fly
+          violet: target radial · bright violet: intercept heading — hidden after you establish on the target line
         </span>
         {onMoveAircraft && <span className="leg drag">drag airplane to reposition</span>}
       </div>

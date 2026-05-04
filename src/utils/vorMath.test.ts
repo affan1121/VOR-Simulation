@@ -31,6 +31,8 @@ import {
   maxDistanceNmAlongRadialInExtents,
   clampAircraftPositionToStationExtents,
   INTERCEPT_LEAD_ANGLE_MAX_DEG,
+  INTERCEPT_ON_LINE_MAX_ERR_DEG,
+  isOnInfiniteRadialLine,
 } from './vorMath';
 
 describe('normalizeHeading', () => {
@@ -56,6 +58,19 @@ describe('shortestSignedAngleDeg', () => {
     expect(shortestSignedAngleDeg(10, 350)).toBe(-20);
     expect(shortestSignedAngleDeg(90, 270)).toBe(180);
     expect(shortestSignedAngleDeg(270, 90)).toBe(-180);
+  });
+});
+
+describe('isOnInfiniteRadialLine', () => {
+  it('is true on outbound or inbound side of the same target radial', () => {
+    expect(isOnInfiniteRadialLine(90, 90)).toBe(true);
+    expect(isOnInfiniteRadialLine(270, 90)).toBe(true);
+    expect(isOnInfiniteRadialLine(0, 360)).toBe(true);
+    expect(isOnInfiniteRadialLine(180, 360)).toBe(true);
+  });
+  it('respects angular tolerance', () => {
+    expect(isOnInfiniteRadialLine(95, 90, INTERCEPT_ON_LINE_MAX_ERR_DEG)).toBe(false);
+    expect(isOnInfiniteRadialLine(92, 90, INTERCEPT_ON_LINE_MAX_ERR_DEG)).toBe(true);
   });
 });
 
