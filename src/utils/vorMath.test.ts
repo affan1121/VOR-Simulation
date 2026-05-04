@@ -23,6 +23,7 @@ import {
   VOR_FLAG_BOUNDARY_MAX_DEG,
   vorOnToFromHemisphereBoundary,
   vorToFrom,
+  vorToFromGeometry,
   windComponentsFrom,
   MAP_PLAN_VIEW_HALF_NM,
   MAP_PLAN_DME_MARGIN_NM,
@@ -140,6 +141,25 @@ describe('vorToFrom', () => {
       const r = radialFromStation(st, ac);
       expect(vorToFrom(r, obs, noAmb)).toBe(exp);
     }
+  });
+});
+
+describe('vorToFromGeometry (CDI — no ambiguity band)', () => {
+  it('matches vorToFrom with no threshold except abeam is TO (not AMBIGUOUS)', () => {
+    expect(vorToFromGeometry(360, 360)).toBe('FROM');
+    expect(vorToFromGeometry(180, 360)).toBe('TO');
+    expect(vorToFromGeometry(90, 0)).toBe('TO');
+    expect(vorToFromGeometry(270, 0)).toBe('TO');
+  });
+
+  it('CDI course error always uses this hemisphere (stable vs wrong toFrom)', () => {
+    const r = 155;
+    const obs = 360;
+    const g = vorToFromGeometry(r, obs);
+    expect(vorCourseErrorDeg(r, obs, g)).toBe(
+      vorCourseErrorDeg(r, obs, g === 'TO' ? 'TO' : 'FROM')
+    );
+    expect(vorCourseErrorDeg(r, obs, g)).not.toBe(vorCourseErrorDeg(r, obs, g === 'TO' ? 'FROM' : 'TO'));
   });
 });
 

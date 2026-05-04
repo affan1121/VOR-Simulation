@@ -85,6 +85,22 @@ export function vorToFrom(
   return dot > 0 ? 'FROM' : 'TO';
 }
 
+/** Treat |cos(r−o)| as zero — perpendicular to course; CDI uses TO branch (matches open hemisphere). */
+const VOR_HEMISPHERE_DOT_EPS = 1e-9;
+
+/**
+ * TO/FROM hemisphere from position only — **no** ambiguity band. Used for CDI course error so the
+ * needle always reflects actual geometry; flags may still use {@link vorToFrom} with thresholds or
+ * cone instability. Perpendicular to course (`cos(r−o) ≈ 0`) ⇒ **TO** (ties closed `dot ≤ 0` side).
+ */
+export function vorToFromGeometry(radialDeg: number, obsDeg: number): 'TO' | 'FROM' {
+  const r = (normalizeHeading(radialDeg) * Math.PI) / 180;
+  const o = (normalizeHeading(obsDeg) * Math.PI) / 180;
+  const dot = Math.cos(r - o);
+  if (Math.abs(dot) < VOR_HEMISPHERE_DOT_EPS) return 'TO';
+  return dot > 0 ? 'FROM' : 'TO';
+}
+
 /**
  * Max angular gap (°) from the exact TO/FROM split line (radials OBS+90° / OBS−90°, i.e. perpendicular
  * to the selected course through the station) before flags stay valid. Cosine thresholds widen to

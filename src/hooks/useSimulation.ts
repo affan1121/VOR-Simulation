@@ -18,6 +18,7 @@ import {
   vorCourseErrorDeg,
   vorOnToFromHemisphereBoundary,
   vorToFrom,
+  vorToFromGeometry,
 } from '../utils/vorMath';
 import type { Position } from '../types';
 
@@ -296,7 +297,8 @@ export function useSimulation() {
       toFrom = flip ? 'TO' : 'FROM';
     }
 
-    const courseErrorDeg = vorCourseErrorDeg(radial, obs, toFrom);
+    /** CDI must follow real hemisphere — never the cone/flag flip (would swap ref radial and invert needle sense). */
+    const courseErrorDeg = vorCourseErrorDeg(radial, obs, vorToFromGeometry(radial, obs));
     /** ±10° scale; needle via {@link vorCdiNeedleFromCourseError} (fly toward needle). */
     let cdi = vorCdiNeedleFromCourseError(courseErrorDeg, VOR_CDI_FULL_SCALE_DEG);
     cdi = applyConeNoise(cdi, dist, simTime);

@@ -7,7 +7,7 @@ This document maps behaviors in this project to **public, non-proprietary** sour
 ## CDI / needle — “fly toward the needle”
 
 - **Reference:** Standard VOR procedure is to **turn toward the course needle** to rejoin the selected course (e.g. discussion of CDI use and tracking in IFR training texts and the AIM navigation aids section on VOR use).
-- **This sim:** `vorCdiNeedleFromCourseError` is the **negation** of linear deflection from signed course error so the displayed needle matches cockpit **“fly toward the needle”** sense (`src/utils/vorMath.ts`). Teaching strings in `src/teaching.ts` match that rule.
+- **This sim:** `vorCdiNeedleFromCourseError` is the **negation** of linear deflection from signed course error so the displayed needle matches cockpit **“fly toward the needle”** sense (`src/utils/vorMath.ts`). Course error uses `vorToFromGeometry` (position only) so the TO/FR **flag** may still flicker in the cone or differ near abeam, but the **needle** does not follow that flag. Teaching strings in `src/teaching.ts` match the rule.
 
 ## Full scale and dots
 
