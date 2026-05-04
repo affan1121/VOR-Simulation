@@ -52,7 +52,7 @@ export default function App() {
   const [scenarioId, setScenarioId] = useState<ScenarioId>('free');
   const [targetRadial, setTargetRadial] = useState(90);
   const [interceptMode, setInterceptMode] = useState<InterceptMode>('INBOUND');
-  const [interceptAngle, setInterceptAngle] = useState(45);
+  const [interceptAngle, setInterceptAngle] = useState(0);
   const [randomExplain, setRandomExplain] = useState<string | null>(null);
 
   const activeScenario = useMemo(
