@@ -481,7 +481,7 @@ export function MapCanvas({
           station.y + uy * labelAlongRay
         );
         const rayLbl = `R-${formatRadialDigits(radial)}°`;
-        ctx.font = '700 11px JetBrains Mono, monospace';
+        ctx.font = '700 12px JetBrains Mono, monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.strokeStyle = 'rgba(8, 10, 14, 0.9)';
@@ -647,7 +647,7 @@ export function MapCanvas({
 
       ctx.restore();
 
-      /* TO/FROM pill near aircraft (R-###° is drawn on the orange ray above). */
+      /* R-###° + TO/FROM pill near aircraft (same radial as orange ray). */
       const distAc = distanceNm(station, aircraft);
       const radRad = (radial * Math.PI) / 180;
       const labelAlongNm =
@@ -674,13 +674,15 @@ export function MapCanvas({
       const radialDigits = formatRadialDigits(radial);
       const tfColor =
         toFrom === 'TO' ? 'rgba(165, 210, 255, 0.98)' : 'rgba(235, 185, 145, 0.98)';
+      const rLabel = `R-${radialDigits}°`;
       ctx.font = '700 12px JetBrains Mono, monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      const m1 = ctx.measureText(rLabel);
       const m2 = ctx.measureText(toFrom);
       const padX = 10;
-      const pillW = m2.width + padX * 2;
-      const pillH = 26;
+      const pillW = Math.max(m1.width, m2.width) + padX * 2;
+      const pillH = 34;
       const px = rbx - pillW / 2;
       const py = rby - pillH / 2;
       ctx.fillStyle = 'rgba(12, 20, 32, 0.92)';
@@ -700,11 +702,16 @@ export function MapCanvas({
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+      const y1 = rby - 7;
+      const y2 = rby + 7;
       ctx.strokeStyle = 'rgba(8, 12, 20, 0.88)';
       ctx.lineWidth = 3;
-      ctx.strokeText(toFrom, rbx, rby);
+      ctx.strokeText(rLabel, rbx, y1);
+      ctx.fillStyle = '#eaf4ff';
+      ctx.fillText(rLabel, rbx, y1);
+      ctx.strokeText(toFrom, rbx, y2);
       ctx.fillStyle = tfColor;
-      ctx.fillText(toFrom, rbx, rby);
+      ctx.fillText(toFrom, rbx, y2);
 
       const trk = (track * Math.PI) / 180;
       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
@@ -767,7 +774,7 @@ export function MapCanvas({
         </span>
         <span className="leg fan">gray: cardinal radials (360 / 090 / 180 / 270)</span>
         <span className="leg rad">
-          orange: your position radial — ray from VOR toward you, R-###° on the line; pill = TO/FR
+          orange: position radial — ray from VOR toward you with R-###°; pill shows R-###° and TO/FR
         </span>
         <span className="leg obs">OBS on instrument only — map shows boundary + fills</span>
         <span className="leg int">
