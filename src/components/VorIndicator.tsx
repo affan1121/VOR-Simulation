@@ -6,6 +6,7 @@ import {
   MAP_PLAN_DME_MARGIN_NM,
   MAP_PLAN_VIEW_HALF_NM,
   maxDistanceNmAlongRadialInExtents,
+  normalizeHeading,
   VOR_CDI_DOT_STEP_DEG,
   VOR_CDI_FULL_SCALE_DEG,
 } from '../utils/vorMath';
@@ -145,9 +146,9 @@ function ObsKnob({ obs, onObsChange }: { obs: number; onObsChange: (v: number) =
 }
 
 /**
- * Compass card rotates with OBS so the selected course stays under the top index.
- * Ring: long tick every 10°, short tick every 5°. Labels stay upright (horizontal)
- * while ticks rotate with the card. CDI needle + four deviation dots each side (4°–10° by 2°, inner 2° omitted).
+ * Fixed compass rose: tick lines stay on the bezel; only the printed numbers (and cardinals)
+ * move with OBS so the selected course sits under the top lubber. CDI needle + four deviation
+ * dots each side (4°–10° by 2°, inner 2° omitted).
  */
 export function VorIndicator({
   obs,
@@ -205,11 +206,6 @@ export function VorIndicator({
     );
   }
 
-  /** Same rotation as <g rotate(obs ...)>: SVG positive = clockwise (y-down); selected OBS ends up under top lubber. */
-  const alpha = (obs * Math.PI) / 180;
-  const cosA = Math.cos(alpha);
-  const sinA = Math.sin(alpha);
-
   const labels: ReactNode[] = [];
   for (let t = 0; t < 360; t += 30) {
     let text: string;
@@ -218,9 +214,8 @@ export function VorIndicator({
     else if (t === 180) text = 'S';
     else if (t === 270) text = 'W';
     else text = t.toString().padStart(3, '0');
-    const [lx, ly] = ringPoint(cx, cy, t, LABEL_RING_R);
-    const wx = cx + cosA * (lx - cx) + sinA * (ly - cy);
-    const wy = cy - sinA * (lx - cx) + cosA * (ly - cy);
+    const faceBearing = normalizeHeading(t - obs);
+    const [wx, wy] = ringPoint(cx, cy, faceBearing, LABEL_RING_R);
     const isCard = t % 90 === 0;
     labels.push(
       <text
@@ -251,7 +246,7 @@ export function VorIndicator({
         </defs>
         <circle cx="110" cy="110" r={FACE_RADIUS} fill="url(#vorFace)" stroke="#3d4f66" strokeWidth="3" />
 
-        <g transform={`rotate(${obs} ${cx} ${cy})`}>{ticks}</g>
+        <g aria-hidden>{ticks}</g>
         <g aria-hidden>{labels}</g>
 
         {/* Lubber — compact; labels sit outside shortened ticks (see TICK_OUTER_R) */}
