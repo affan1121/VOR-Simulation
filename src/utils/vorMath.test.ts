@@ -4,6 +4,7 @@ import {
   cardinalRelativeToStation,
   cdiNeedleDeflection,
   crossTrackSign,
+  vorCdiNeedleFromCourseError,
   crossTrackSignRate,
   distanceNm,
   groundVelocityKts,
@@ -153,9 +154,11 @@ describe('referenceRadialForCdi and vorCourseErrorDeg', () => {
     expect(referenceRadialForCdi(obs, 'TO')).toBe(180);
     expect(vorCourseErrorDeg(180, obs, 'TO')).toBe(0);
   });
-  it('CDI error 10° gives full deflection at default scale', () => {
+  it('10° course error: raw mapping vs cockpit needle (fly toward needle)', () => {
     const e = vorCourseErrorDeg(10, 0, 'FROM');
+    expect(e).toBeCloseTo(10, 5);
     expect(cdiNeedleDeflection(e, VOR_CDI_FULL_SCALE_DEG)).toBe(1);
+    expect(vorCdiNeedleFromCourseError(e, VOR_CDI_FULL_SCALE_DEG)).toBe(-1);
   });
 
   it('zero course error exactly on reference radial for many OBS × TO/FROM', () => {
@@ -196,7 +199,7 @@ describe('cdiNeedleDeflection (course deviation indicator)', () => {
     expect(cdiNeedleDeflection(-7.5)).toBe(-0.75);
   });
 
-  it('needle sign tracks course-error sign (fly toward needle)', () => {
+  it('raw cdiNeedleDeflection keeps same sign as signed course error', () => {
     const pairs: [number, number][] = [
       [4, 0.4],
       [-6, -0.6],
@@ -207,7 +210,13 @@ describe('cdiNeedleDeflection (course deviation indicator)', () => {
     }
   });
 
-  it('FROM: right of OBS line ⇒ positive error ⇒ positive needle (geometry)', () => {
+  it('cockpit needle points toward course (opposite sign from raw linear error)', () => {
+    expect(vorCdiNeedleFromCourseError(5)).toBeCloseTo(-0.5, 10);
+    expect(Math.sign(vorCdiNeedleFromCourseError(4))).toBe(-1);
+    expect(Math.sign(vorCdiNeedleFromCourseError(-6))).toBe(1);
+  });
+
+  it('FROM: right of OBS line ⇒ positive course error ⇒ cockpit needle left (fly left)', () => {
     const st = { x: 0, y: 0 };
     const obs = 90;
     const acRight = { x: 10, y: -4 };
@@ -218,8 +227,14 @@ describe('cdiNeedleDeflection (course deviation indicator)', () => {
     expect(crossTrackSign(st, acLeft, obs)).toBeLessThan(0);
     expect(vorCourseErrorDeg(rR, obs, 'FROM')).toBeGreaterThan(0);
     expect(vorCourseErrorDeg(rL, obs, 'FROM')).toBeLessThan(0);
-    expect(cdiNeedleDeflection(vorCourseErrorDeg(rR, obs, 'FROM'))).toBeGreaterThan(0);
-    expect(cdiNeedleDeflection(vorCourseErrorDeg(rL, obs, 'FROM'))).toBeLessThan(0);
+    expect(vorCdiNeedleFromCourseError(vorCourseErrorDeg(rR, obs, 'FROM'))).toBeLessThan(0);
+    expect(vorCdiNeedleFromCourseError(vorCourseErrorDeg(rL, obs, 'FROM'))).toBeGreaterThan(0);
+  });
+
+  it('OBS 360 FROM on R-330: needle deflects right (course is to the right)', () => {
+    const err = vorCourseErrorDeg(330, 360, 'FROM');
+    expect(err).toBeCloseTo(-30, 5);
+    expect(vorCdiNeedleFromCourseError(err)).toBeGreaterThan(0);
   });
 
   it('TO: small perpendicular offset off the course line produces opposite signed errors', () => {
@@ -236,8 +251,8 @@ describe('cdiNeedleDeflection (course deviation indicator)', () => {
     expect(errP).not.toBe(0);
     expect(errM).not.toBe(0);
     expect(Math.sign(errP)).toBe(-Math.sign(errM));
-    expect(Math.sign(errP)).toBe(Math.sign(cdiNeedleDeflection(errP)));
-    expect(Math.sign(errM)).toBe(Math.sign(cdiNeedleDeflection(errM)));
+    expect(Math.sign(errP)).toBe(-Math.sign(vorCdiNeedleFromCourseError(errP)));
+    expect(Math.sign(errM)).toBe(-Math.sign(vorCdiNeedleFromCourseError(errM)));
   });
 });
 

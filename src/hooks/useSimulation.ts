@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   bearingToStation,
-  cdiNeedleDeflection,
+  vorCdiNeedleFromCourseError,
   clampAircraftPositionToStationExtents,
   DME_EDIT_MAX_NM,
   DME_EDIT_MIN_NM,
@@ -297,8 +297,8 @@ export function useSimulation() {
     }
 
     const courseErrorDeg = vorCourseErrorDeg(radial, obs, toFrom);
-    /** ±10° scale: positive ⇒ needle toward +x on the gauge (right) ⇒ fly toward the needle (same as typical “toward/from” cockpit sense). */
-    let cdi = cdiNeedleDeflection(courseErrorDeg, VOR_CDI_FULL_SCALE_DEG);
+    /** ±10° scale; positive ⇒ needle right ⇒ fly right toward needle (standard VOR). */
+    let cdi = vorCdiNeedleFromCourseError(courseErrorDeg, VOR_CDI_FULL_SCALE_DEG);
     cdi = applyConeNoise(cdi, dist, simTime);
 
     const gv = directGroundSpeedMode

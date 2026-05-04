@@ -67,10 +67,10 @@ export function buildTeachingNarrative(s: SimSnapshot): string[] {
 
 export function explainCdiLeftRight(s: SimSnapshot): string {
   if (Math.abs(s.cdi) < 0.05) return 'CDI centered — no turn required for course.';
-  const err = s.courseErrorDeg;
-  if (err > 0)
-    return `Course puts you ${err.toFixed(1)}° right of reference — needle deflected **right** — fly **right** toward the needle.`;
-  return `Course puts you ${Math.abs(err).toFixed(1)}° left of reference — needle deflected **left** — fly **left** toward the needle.`;
+  const errAbs = Math.abs(s.courseErrorDeg);
+  if (s.cdi > 0)
+    return `CDI deflected **right** — fly **right** toward the needle (${errAbs.toFixed(1)}° off selected course).`;
+  return `CDI deflected **left** — fly **left** toward the needle (${errAbs.toFixed(1)}° off selected course).`;
 }
 
 export function explainInterceptTurn(

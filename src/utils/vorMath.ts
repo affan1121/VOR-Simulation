@@ -115,10 +115,10 @@ export function referenceRadialForCdi(obsDeg: number, toFrom: 'TO' | 'FROM'): nu
 }
 
 /**
- * Signed angular error off the selected course line (degrees).
- * Positive ⇒ aircraft radial is clockwise from the reference radial ⇒ typically **right** of the OBS
- * course line when looking outbound from the station along OBS.
- * Needle deflection uses this sign directly: positive error ⇒ CDI toward the right ⇒ fly right toward the needle.
+ * Signed angular error off the selected course line (degrees): shortest arc from reference radial to
+ * aircraft radial. Positive ⇒ aircraft radial is clockwise from the reference (when viewed from above).
+ * Cockpit CDI uses {@link vorCdiNeedleFromCourseError} so the needle indicates **which way to turn**
+ * (fly toward the needle).
  */
 export function vorCourseErrorDeg(
   radialDeg: number,
@@ -130,8 +130,8 @@ export function vorCourseErrorDeg(
 }
 
 /**
- * CDI scale: full needle deflection at ±fullScaleDeg (typically 10° for VOR).
- * Returns -1..1 proportional to course error (same sign as {@link vorCourseErrorDeg}).
+ * Raw linear mapping from signed course error (°) to needle fraction — math sense only.
+ * For cockpit display use {@link vorCdiNeedleFromCourseError}.
  */
 export function cdiNeedleDeflection(
   courseErrorDeg: number,
@@ -141,6 +141,17 @@ export function cdiNeedleDeflection(
   if (raw > 1) return 1;
   if (raw < -1) return -1;
   return raw;
+}
+
+/**
+ * VOR CDI needle position (−1 left … +1 right): **fly toward the needle** (standard cockpit sense).
+ * Negates {@link cdiNeedleDeflection} so when you are left of course the needle deflects **right**.
+ */
+export function vorCdiNeedleFromCourseError(
+  courseErrorDeg: number,
+  fullScaleDeg = VOR_CDI_FULL_SCALE_DEG
+): number {
+  return -cdiNeedleDeflection(courseErrorDeg, fullScaleDeg);
 }
 
 /** Slant-range distance in NM (flat-earth training approximation). */
