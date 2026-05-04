@@ -10,6 +10,7 @@ import { useSimulation } from './hooks/useSimulation';
 import { SCENARIOS } from './scenarios';
 import { generateRandomChallenge } from './randomScenario';
 import {
+  formatMagneticThreeDigit360,
   recommendedInterceptHeading,
   normalizeHeading,
   type InterceptMode,
@@ -193,7 +194,7 @@ export default function App() {
                 title="Suggested magnetic heading to intercept the target radial set in the Intercept panel (wind affects track)"
                 className="status-int-hdg"
               >
-                INT HDG {Math.round(interceptRec.heading)}°
+                INT HDG {formatMagneticThreeDigit360(interceptRec.heading)}°
               </span>
             )}
           </div>

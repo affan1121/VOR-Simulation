@@ -20,6 +20,13 @@ export function normalizeHeading(deg: number): number {
   return x < 0 ? x + 360 : x;
 }
 
+/** Three-digit magnetic heading for UI; normalized 000° is shown as 360 (common briefing style). */
+export function formatMagneticThreeDigit360(deg: number): string {
+  const n = Math.round(normalizeHeading(deg));
+  const d = n === 0 ? 360 : n;
+  return d.toString().padStart(3, '0');
+}
+
 /** Magnetic reciprocal (opposite) direction. */
 export function reciprocalCourse(deg: number): number {
   return normalizeHeading(deg + 180);
@@ -240,6 +247,50 @@ export function crossTrackSign(
 }
 
 /**
+ * Rate of change of {@link crossTrackSign} per NM flown along `headingDeg` (same NM frame as positions).
+ * Used to pick which of two ±lead intercept headings actually cuts toward the course line.
+ */
+export function crossTrackSignRate(
+  _station: { x: number; y: number },
+  _aircraft: { x: number; y: number },
+  targetRadialDeg: number,
+  headingDeg: number
+): number {
+  const θ = (normalizeHeading(targetRadialDeg) * Math.PI) / 180;
+  const ux = Math.sin(θ);
+  const uy = Math.cos(θ);
+  const hr = (normalizeHeading(headingDeg) * Math.PI) / 180;
+  const ve = Math.sin(hr);
+  const vn = Math.cos(hr);
+  return ve * uy - vn * ux;
+}
+
+function pickInterceptHeadingTowardRadialLine(
+  station: { x: number; y: number },
+  aircraft: { x: number; y: number },
+  targetRadial: number,
+  hA: number,
+  hB: number
+): number {
+  const c0 = crossTrackSign(station, aircraft, targetRadial);
+  const rA = crossTrackSignRate(station, aircraft, targetRadial, hA);
+  const rB = crossTrackSignRate(station, aircraft, targetRadial, hB);
+  const helpsA = c0 !== 0 && rA * c0 < 0;
+  const helpsB = c0 !== 0 && rB * c0 < 0;
+  if (helpsA && !helpsB) return normalizeHeading(hA);
+  if (helpsB && !helpsA) return normalizeHeading(hB);
+  if (helpsA && helpsB) return normalizeHeading(Math.abs(rA) >= Math.abs(rB) ? hA : hB);
+  const step = 0.02;
+  const magAfter = (h: number) => {
+    const rad = (normalizeHeading(h) * Math.PI) / 180;
+    const nx = aircraft.x + Math.sin(rad) * step;
+    const ny = aircraft.y + Math.cos(rad) * step;
+    return Math.abs(crossTrackSign(station, { x: nx, y: ny }, targetRadial));
+  };
+  return normalizeHeading(magAfter(hA) <= magAfter(hB) ? hA : hB);
+}
+
+/**
  * Recommended magnetic heading to join the **target radial** with a lead angle.
  *
  * The course line in space is always the ray from the station along `targetRadial` (same line for
@@ -248,8 +299,9 @@ export function crossTrackSign(
  * - **OUTBOUND** on R-###: established heading = `targetRadial`.
  * - **INBOUND** on R-###: established heading = reciprocal(`targetRadial`) (toward the station on that line).
  *
- * Lateral side uses {@link crossTrackSign} on that ray. From the right of the line, subtract the
- * intercept angle from the on-course heading (cut in with a left turn component); from the left, add it.
+ * For lead &gt; 0 there are two headings at ±lead from on-course; the one that **flies toward** the
+ * infinite course line (reduces |cross-track|) is chosen — not a fixed left/right rule, which can
+ * pick a heading away from the line (e.g. 180° vs 360° for a 90° inbound intercept from the southwest).
  */
 export function recommendedInterceptHeading(params: {
   aircraft: { x: number; y: number };
@@ -269,10 +321,6 @@ export function recommendedInterceptHeading(params: {
   const currentRadial = radialFromStation(station, aircraft);
   const brgTo = bearingToStation(currentRadial);
   const target = normalizeHeading(targetRadial);
-  /** Treat ~on the line as “left” so lead angle is deterministic (either side ± lead is symmetric for training). */
-  const crossEps = 1e-6;
-  const side = crossTrackSign(station, aircraft, target);
-  const joinFromRight = side > crossEps;
   const lead = Math.max(0, interceptAngleDeg);
 
   let interceptHeading: number;
@@ -280,12 +328,14 @@ export function recommendedInterceptHeading(params: {
     interceptHeading = onCourseHeading(target, mode);
   } else if (mode === 'INBOUND') {
     const inboundHdg = reciprocalCourse(target);
-    interceptHeading = normalizeHeading(
-      inboundHdg + (joinFromRight ? -lead : lead)
-    );
+    const hA = normalizeHeading(inboundHdg - lead);
+    const hB = normalizeHeading(inboundHdg + lead);
+    interceptHeading = pickInterceptHeadingTowardRadialLine(station, aircraft, target, hA, hB);
   } else {
     const outboundHdg = target;
-    interceptHeading = normalizeHeading(outboundHdg + (joinFromRight ? -lead : lead));
+    const hA = normalizeHeading(outboundHdg - lead);
+    const hB = normalizeHeading(outboundHdg + lead);
+    interceptHeading = pickInterceptHeadingTowardRadialLine(station, aircraft, target, hA, hB);
   }
 
   const turnDir =

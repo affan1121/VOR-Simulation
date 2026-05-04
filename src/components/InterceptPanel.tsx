@@ -1,6 +1,7 @@
 import type { InterceptMode } from '../utils/vorMath';
 import {
   INTERCEPT_LEAD_ANGLE_MAX_DEG,
+  formatMagneticThreeDigit360,
   normalizeHeading,
   reciprocalCourse,
   recommendedInterceptHeading,
@@ -42,8 +43,8 @@ export function InterceptPanel({
   const tgtNorm = normalizeHeading(targetRadial);
   const tgtDigits =
     tgtNorm === 0 ? '360' : Math.round(tgtNorm).toString().padStart(3, '0');
-  const interceptHdg = Math.round(rec.heading);
-  const establishedHdg = Math.round(
+  const interceptHdg = formatMagneticThreeDigit360(rec.heading);
+  const establishedHdg = formatMagneticThreeDigit360(
     mode === 'INBOUND' ? reciprocalCourse(tgtNorm) : tgtNorm
   );
   const currentHdg = Math.round(snapshot.heading);

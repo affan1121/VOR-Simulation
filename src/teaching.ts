@@ -2,6 +2,7 @@ import type { SimSnapshot } from './hooks/useSimulation';
 import {
   cardinalRelativeToStation,
   crossTrackSign,
+  formatMagneticThreeDigit360,
   reciprocalCourse,
   shortestSignedAngleDeg,
 } from './utils/vorMath';
@@ -78,5 +79,5 @@ export function explainInterceptTurn(
 ): string {
   const t = shortestSignedAngleDeg(currentHdg, recommendedHdg);
   if (Math.abs(t) < 3) return 'Your heading already matches the recommended intercept heading within a few degrees.';
-  return `Recommended intercept heading is ${Math.round(recommendedHdg)}° — turn **${t >= 0 ? 'right' : 'left'}** about ${Math.abs(Math.round(t))}° to establish.`;
+  return `Recommended intercept heading is ${formatMagneticThreeDigit360(recommendedHdg)}° — turn **${t >= 0 ? 'right' : 'left'}** about ${Math.abs(Math.round(t))}° to establish.`;
 }

@@ -4,6 +4,7 @@ import {
   cardinalRelativeToStation,
   cdiNeedleDeflection,
   crossTrackSign,
+  crossTrackSignRate,
   distanceNm,
   groundVelocityKts,
   inConeOfConfusion,
@@ -301,7 +302,7 @@ describe('recommendedInterceptHeading', () => {
     ).toBe(onCourseHeading(tgt, 'INBOUND'));
   });
 
-  it('every cardinal target × mode × lateral side: intercept matches closed-form lead', () => {
+  it('every cardinal target × mode: intercept is ±lead from on-course and cuts toward the line', () => {
     const lead = 38;
     const alongNm = 14;
     const crossNm = 6;
@@ -316,29 +317,25 @@ describe('recommendedInterceptHeading', () => {
         expect(crossTrackSign(st, leftPt, tgt)).toBeLessThan(0);
 
         const established = onCourseHeading(tgt, mode);
-        const expectRight = normalizeHeading(established - lead);
-        const expectLeft = normalizeHeading(established + lead);
+        const candA = normalizeHeading(established - lead);
+        const candB = normalizeHeading(established + lead);
 
-        const gotRight = recommendedInterceptHeading({
-          aircraft: rightPt,
-          station: st,
-          targetRadial: tgt,
-          mode,
-          interceptAngleDeg: lead,
-          currentHeading: 0,
-        }).heading;
-
-        const gotLeft = recommendedInterceptHeading({
-          aircraft: leftPt,
-          station: st,
-          targetRadial: tgt,
-          mode,
-          interceptAngleDeg: lead,
-          currentHeading: 0,
-        }).heading;
-
-        expect(gotRight).toBe(expectRight);
-        expect(gotLeft).toBe(expectLeft);
+        for (const pt of [rightPt, leftPt]) {
+          const got = recommendedInterceptHeading({
+            aircraft: pt,
+            station: st,
+            targetRadial: tgt,
+            mode,
+            interceptAngleDeg: lead,
+            currentHeading: 0,
+          }).heading;
+          expect([candA, candB]).toContain(got);
+          const c0 = crossTrackSign(st, pt, tgt);
+          const rate = crossTrackSignRate(st, pt, tgt, got);
+          if (Math.abs(c0) > 1e-4) {
+            expect(rate * c0).toBeLessThan(0);
+          }
+        }
       }
     }
   });
@@ -383,9 +380,21 @@ describe('recommendedInterceptHeading', () => {
     expect(r.heading).toBeCloseTo(135, 5);
   });
 
-  it('INBOUND on R-090 from southeast subtracts lead toward reciprocal heading', () => {
+  it('INBOUND on R-090 from southeast: picks heading toward course (315°), not away (225°)', () => {
     const r = recommendedInterceptHeading({
       aircraft: { x: 10, y: -5 },
+      station: st,
+      targetRadial: 90,
+      mode: 'INBOUND',
+      interceptAngleDeg: 45,
+      currentHeading: 180,
+    });
+    expect(r.heading).toBeCloseTo(315, 5);
+  });
+
+  it('INBOUND on R-090 from northwest: picks heading toward course (225°), not away (315°)', () => {
+    const r = recommendedInterceptHeading({
+      aircraft: { x: 10, y: 5 },
       station: st,
       targetRadial: 90,
       mode: 'INBOUND',
@@ -395,16 +404,19 @@ describe('recommendedInterceptHeading', () => {
     expect(r.heading).toBeCloseTo(225, 5);
   });
 
-  it('INBOUND on R-090 from northwest adds lead toward reciprocal heading', () => {
+  it('INBOUND R-090 with 90° lead from 210° radial: north (0° ≡ 360°), not 180° away', () => {
+    const nm = 10;
+    const θ = (210 * Math.PI) / 180;
+    const ac = { x: Math.sin(θ) * nm, y: Math.cos(θ) * nm };
     const r = recommendedInterceptHeading({
-      aircraft: { x: 10, y: 5 },
+      aircraft: ac,
       station: st,
       targetRadial: 90,
       mode: 'INBOUND',
-      interceptAngleDeg: 45,
+      interceptAngleDeg: 90,
       currentHeading: 180,
     });
-    expect(r.heading).toBeCloseTo(315, 5);
+    expect(r.heading).toBe(0);
   });
 });
 

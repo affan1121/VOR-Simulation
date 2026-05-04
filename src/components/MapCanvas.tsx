@@ -4,6 +4,7 @@ import type { Position } from '../types';
 import {
   distanceNm,
   DME_EDIT_MIN_NM,
+  formatMagneticThreeDigit360,
   MAP_PLAN_DME_MARGIN_NM,
   MAP_PLAN_VIEW_HALF_NM,
   MAP_VIEW_NM_TO_PX,
@@ -478,7 +479,7 @@ export function MapCanvas({
         const lwx = aircraft.x + Math.sin(irad) * lagNm;
         const lwy = aircraft.y + Math.cos(irad) * lagNm;
         const [lx, ly] = worldToScreen(lwx, lwy);
-        const hdgTxt = `INT ${Math.round(interceptHeading).toString().padStart(3, '0')}°`;
+        const hdgTxt = `INT ${formatMagneticThreeDigit360(interceptHeading)}°`;
         const angTxt =
           interceptAngleDeg !== undefined
             ? `${Math.round(interceptAngleDeg)}° lead`
