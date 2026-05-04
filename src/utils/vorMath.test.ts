@@ -172,18 +172,27 @@ describe('referenceRadialForCdi and vorCourseErrorDeg', () => {
     }
   });
 
-  it('course error equals shortest angle ref → aircraft radial', () => {
+  it('course error matches signed shortest arc (FROM: ref→radial, TO: radial→ref)', () => {
     for (const obs of [0, 45, 90, 200]) {
       for (const tf of ['FROM', 'TO'] as const) {
         const ref = referenceRadialForCdi(obs, tf);
         for (const off of [-9, -3, 3, 9]) {
           const r = normalizeHeading(ref + off);
-          expect(vorCourseErrorDeg(r, obs, tf)).toBe(
-            shortestSignedAngleDeg(ref, r)
-          );
+          const expected =
+            tf === 'FROM'
+              ? shortestSignedAngleDeg(ref, r)
+              : shortestSignedAngleDeg(r, ref);
+          expect(vorCourseErrorDeg(r, obs, tf)).toBe(expected);
         }
       }
     }
+  });
+
+  it('OBS 360 TO on R-155: east of inbound course ⇒ needle left', () => {
+    expect(vorToFrom(155, 360)).toBe('TO');
+    const err = vorCourseErrorDeg(155, 360, 'TO');
+    expect(err).toBeCloseTo(25, 5);
+    expect(vorCdiNeedleFromCourseError(err)).toBeLessThan(0);
   });
 });
 

@@ -297,7 +297,7 @@ export function useSimulation() {
     }
 
     const courseErrorDeg = vorCourseErrorDeg(radial, obs, toFrom);
-    /** ±10° scale; positive ⇒ needle right ⇒ fly right toward needle (standard VOR). */
+    /** ±10° scale; needle via {@link vorCdiNeedleFromCourseError} (fly toward needle). */
     let cdi = vorCdiNeedleFromCourseError(courseErrorDeg, VOR_CDI_FULL_SCALE_DEG);
     cdi = applyConeNoise(cdi, dist, simTime);
 

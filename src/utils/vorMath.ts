@@ -115,10 +115,10 @@ export function referenceRadialForCdi(obsDeg: number, toFrom: 'TO' | 'FROM'): nu
 }
 
 /**
- * Signed angular error off the selected course line (degrees): shortest arc from reference radial to
- * aircraft radial. Positive ⇒ aircraft radial is clockwise from the reference (when viewed from above).
- * Cockpit CDI uses {@link vorCdiNeedleFromCourseError} so the needle indicates **which way to turn**
- * (fly toward the needle).
+ * Signed angular error off the selected course line (degrees).
+ * FROM: shortest arc ref → aircraft radial. TO: shortest arc aircraft radial → ref (same CDI “fly
+ * toward the needle” sense as FROM). Positive course error maps to left needle via
+ * {@link vorCdiNeedleFromCourseError}.
  */
 export function vorCourseErrorDeg(
   radialDeg: number,
@@ -126,7 +126,8 @@ export function vorCourseErrorDeg(
   toFrom: 'TO' | 'FROM'
 ): number {
   const ref = referenceRadialForCdi(obsDeg, toFrom);
-  return shortestSignedAngleDeg(ref, normalizeHeading(radialDeg));
+  const r = normalizeHeading(radialDeg);
+  return toFrom === 'TO' ? shortestSignedAngleDeg(r, ref) : shortestSignedAngleDeg(ref, r);
 }
 
 /**
