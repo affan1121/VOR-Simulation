@@ -15,8 +15,8 @@ export function StudentGuide() {
           brown/blue map halves to check your side.
         </li>
         <li>
-          Turn <strong>intercept angle</strong> above <strong>0°</strong> for intercept lines on the map; they disappear
-          automatically once you&apos;re on the target radial.
+          Turn <strong>intercept angle</strong> above <strong>0°</strong> for intercept lines; they clear when your
+          R-### matches the <strong>outbound</strong> or <strong>inbound (reciprocal)</strong> side you selected.
         </li>
         <li>
           Fly the heading in <strong>Intercept</strong> / <strong>INT HDG</strong> until the needle centers, then fly the

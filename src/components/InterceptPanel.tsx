@@ -153,8 +153,19 @@ export function InterceptPanel({
       ) : null}
       {interceptAngle > 0 && !interceptOverlayOnMap ? (
         <p className="intercept-established-note fine" role="status">
-          You are on the <strong>R-{tgtDigits}°</strong> line (within a few degrees) — intercept lines are removed from
-          the map. Drift off the radial or set intercept angle to <strong>0°</strong> to turn the overlay off entirely.
+          Established{' '}
+          {mode === 'OUTBOUND' ? (
+            <>
+              <strong>outbound</strong> on <strong>R-{tgtDigits}°</strong>
+            </>
+          ) : (
+            <>
+              <strong>inbound</strong> on that radial — your R-### matches the{' '}
+              <strong>reciprocal</strong> ({formatMagneticThreeDigit360(reciprocalCourse(tgtNorm))}°)
+            </>
+          )}{' '}
+          (within a few degrees). Intercept lines are off the map until you drift away. Set intercept angle to{' '}
+          <strong>0°</strong> to hide help entirely.
         </p>
       ) : null}
       {interceptAngle <= 0 ? (

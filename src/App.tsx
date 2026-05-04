@@ -11,7 +11,7 @@ import { SCENARIOS } from './scenarios';
 import { generateRandomChallenge } from './randomScenario';
 import {
   formatMagneticThreeDigit360,
-  isOnInfiniteRadialLine,
+  isEstablishedOnInterceptRadial,
   recommendedInterceptHeading,
   normalizeHeading,
   type InterceptMode,
@@ -82,11 +82,15 @@ export default function App() {
     currentHeading: snapshot.heading,
   });
 
-  /** Map intercept aids when lead > 0 and not yet established on the target radial line. */
+  /** Map intercept aids when lead > 0 and not yet established on the exact radial for inbound/outbound. */
   const interceptMapActive = useMemo(() => {
     if (interceptAngle <= 0) return false;
-    return !isOnInfiniteRadialLine(snapshot.radial, normalizeHeading(targetRadial));
-  }, [interceptAngle, snapshot.radial, targetRadial]);
+    return !isEstablishedOnInterceptRadial(
+      snapshot.radial,
+      normalizeHeading(targetRadial),
+      interceptMode
+    );
+  }, [interceptAngle, snapshot.radial, targetRadial, interceptMode]);
 
   const applyGroundSpeedTyped = useCallback((kt: number) => {
     setDirectGroundSpeed(kt);

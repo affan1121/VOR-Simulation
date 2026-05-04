@@ -9,10 +9,10 @@ import type { Position } from '../types';
 export const INTERCEPT_LEAD_ANGLE_MAX_DEG = 90;
 
 /**
- * Angular tolerance (°) for treating the aircraft as established on the intercept target’s infinite
- * radial line (either outbound or reciprocal inbound leg).
+ * Max angular error (°) between your displayed radial (R-###) and the value that counts as
+ * “established” for intercept overlay removal — **mode-specific** via {@link isEstablishedOnInterceptRadial}.
  */
-export const INTERCEPT_ON_LINE_MAX_ERR_DEG = 2.5;
+export const INTERCEPT_ESTABLISHED_MAX_ERR_DEG = 2.5;
 
 /** Course-error ° that pegs the CDI (training VOR). */
 export const VOR_CDI_FULL_SCALE_DEG = 10;
@@ -51,18 +51,35 @@ export function shortestSignedAngleDeg(fromDeg: number, toDeg: number): number {
 
 /**
  * True when the aircraft lies on the infinite line through the station along `targetRadialDeg`
- * (within `maxErrDeg` of either that radial or its reciprocal — outbound or inbound side).
+ * (within `maxErrDeg` of either that radial or its reciprocal).
  */
 export function isOnInfiniteRadialLine(
   aircraftRadialDeg: number,
   targetRadialDeg: number,
-  maxErrDeg = INTERCEPT_ON_LINE_MAX_ERR_DEG
+  maxErrDeg = INTERCEPT_ESTABLISHED_MAX_ERR_DEG
 ): boolean {
   const t = normalizeHeading(targetRadialDeg);
   const r = normalizeHeading(aircraftRadialDeg);
   const d1 = Math.abs(shortestSignedAngleDeg(t, r));
   const d2 = Math.abs(shortestSignedAngleDeg(reciprocalCourse(t), r));
   return Math.min(d1, d2) <= maxErrDeg;
+}
+
+/**
+ * True when the aircraft is established on the **named** target radial for the intercept mode:
+ * **OUTBOUND** — your R-### matches `targetRadialDeg`; **INBOUND** — you are on the inbound side of
+ * that radial (R-### = reciprocal of the target).
+ */
+export function isEstablishedOnInterceptRadial(
+  aircraftRadialDeg: number,
+  targetRadialDeg: number,
+  mode: InterceptMode,
+  maxErrDeg = INTERCEPT_ESTABLISHED_MAX_ERR_DEG
+): boolean {
+  const t = normalizeHeading(targetRadialDeg);
+  const r = normalizeHeading(aircraftRadialDeg);
+  const ref = mode === 'OUTBOUND' ? t : reciprocalCourse(t);
+  return Math.abs(shortestSignedAngleDeg(ref, r)) <= maxErrDeg;
 }
 
 /**

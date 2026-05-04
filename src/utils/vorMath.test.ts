@@ -31,7 +31,8 @@ import {
   maxDistanceNmAlongRadialInExtents,
   clampAircraftPositionToStationExtents,
   INTERCEPT_LEAD_ANGLE_MAX_DEG,
-  INTERCEPT_ON_LINE_MAX_ERR_DEG,
+  INTERCEPT_ESTABLISHED_MAX_ERR_DEG,
+  isEstablishedOnInterceptRadial,
   isOnInfiniteRadialLine,
 } from './vorMath';
 
@@ -69,8 +70,19 @@ describe('isOnInfiniteRadialLine', () => {
     expect(isOnInfiniteRadialLine(180, 360)).toBe(true);
   });
   it('respects angular tolerance', () => {
-    expect(isOnInfiniteRadialLine(95, 90, INTERCEPT_ON_LINE_MAX_ERR_DEG)).toBe(false);
-    expect(isOnInfiniteRadialLine(92, 90, INTERCEPT_ON_LINE_MAX_ERR_DEG)).toBe(true);
+    expect(isOnInfiniteRadialLine(95, 90, INTERCEPT_ESTABLISHED_MAX_ERR_DEG)).toBe(false);
+    expect(isOnInfiniteRadialLine(92, 90, INTERCEPT_ESTABLISHED_MAX_ERR_DEG)).toBe(true);
+  });
+});
+
+describe('isEstablishedOnInterceptRadial', () => {
+  it('OUTBOUND: only the outbound radial counts', () => {
+    expect(isEstablishedOnInterceptRadial(90, 90, 'OUTBOUND')).toBe(true);
+    expect(isEstablishedOnInterceptRadial(270, 90, 'OUTBOUND')).toBe(false);
+  });
+  it('INBOUND: only the inbound (reciprocal) radial counts', () => {
+    expect(isEstablishedOnInterceptRadial(270, 90, 'INBOUND')).toBe(true);
+    expect(isEstablishedOnInterceptRadial(90, 90, 'INBOUND')).toBe(false);
   });
 });
 
