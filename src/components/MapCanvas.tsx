@@ -453,8 +453,43 @@ export function MapCanvas({
           2
         );
       }
-      /** Position radial: bearing from station through the aircraft (same value as the VOR radial readout). */
-      drawLineAngle(radial, 'rgba(255, 145, 72, 0.92)', [], 2.85);
+
+      /** Position radial: one ray from VOR along bearing toward aircraft only (no line through opposite side). */
+      const distAcForRay = distanceNm(station, aircraft);
+      {
+        const radH = (radial * Math.PI) / 180;
+        const ux = Math.sin(radH);
+        const uy = Math.cos(radH);
+        const maxLenNm = VIEW_NM * 1.18;
+        const lenNm =
+          distAcForRay < 0.02
+            ? maxLenNm * 0.42
+            : Math.min(maxLenNm, Math.max(distAcForRay * 1.18, 2.8));
+        const [ex, ey] = worldToScreen(
+          station.x + ux * lenNm,
+          station.y + uy * lenNm
+        );
+        ctx.beginPath();
+        ctx.moveTo(fix[0], fix[1]);
+        ctx.lineTo(ex, ey);
+        ctx.strokeStyle = 'rgba(255, 145, 72, 0.92)';
+        ctx.lineWidth = 2.85;
+        ctx.stroke();
+        const labelAlongRay = lenNm * 0.5;
+        const [rlx, rly] = worldToScreen(
+          station.x + ux * labelAlongRay,
+          station.y + uy * labelAlongRay
+        );
+        const rayLbl = `R-${formatRadialDigits(radial)}°`;
+        ctx.font = '700 11px JetBrains Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.strokeStyle = 'rgba(8, 10, 14, 0.9)';
+        ctx.lineWidth = 3;
+        ctx.strokeText(rayLbl, rlx, rly);
+        ctx.fillStyle = 'rgba(255, 200, 130, 0.98)';
+        ctx.fillText(rayLbl, rlx, rly);
+      }
 
       const ac = worldToScreen(aircraft.x, aircraft.y);
 
@@ -612,7 +647,7 @@ export function MapCanvas({
 
       ctx.restore();
 
-      /* Live radial label + TO/FROM words at radial pill. */
+      /* TO/FROM pill near aircraft (R-###° is drawn on the orange ray above). */
       const distAc = distanceNm(station, aircraft);
       const radRad = (radial * Math.PI) / 180;
       const labelAlongNm =
@@ -639,15 +674,13 @@ export function MapCanvas({
       const radialDigits = formatRadialDigits(radial);
       const tfColor =
         toFrom === 'TO' ? 'rgba(165, 210, 255, 0.98)' : 'rgba(235, 185, 145, 0.98)';
-      const rLabel = `R-${radialDigits}°`;
       ctx.font = '700 12px JetBrains Mono, monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const m1 = ctx.measureText(rLabel);
       const m2 = ctx.measureText(toFrom);
       const padX = 10;
-      const pillW = Math.max(m1.width, m2.width) + padX * 2;
-      const pillH = 34;
+      const pillW = m2.width + padX * 2;
+      const pillH = 26;
       const px = rbx - pillW / 2;
       const py = rby - pillH / 2;
       ctx.fillStyle = 'rgba(12, 20, 32, 0.92)';
@@ -667,16 +700,11 @@ export function MapCanvas({
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      const y1 = rby - 7;
-      const y2 = rby + 7;
       ctx.strokeStyle = 'rgba(8, 12, 20, 0.88)';
       ctx.lineWidth = 3;
-      ctx.strokeText(rLabel, rbx, y1);
-      ctx.fillStyle = '#eaf4ff';
-      ctx.fillText(rLabel, rbx, y1);
-      ctx.strokeText(toFrom, rbx, y2);
+      ctx.strokeText(toFrom, rbx, rby);
       ctx.fillStyle = tfColor;
-      ctx.fillText(toFrom, rbx, y2);
+      ctx.fillText(toFrom, rbx, rby);
 
       const trk = (track * Math.PI) / 180;
       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
@@ -738,7 +766,9 @@ export function MapCanvas({
           on map
         </span>
         <span className="leg fan">gray: cardinal radials (360 / 090 / 180 / 270)</span>
-        <span className="leg rad">orange: your position radial (R-###° matches movement)</span>
+        <span className="leg rad">
+          orange: your position radial — ray from VOR toward you, R-###° on the line; pill = TO/FR
+        </span>
         <span className="leg obs">OBS on instrument only — map shows boundary + fills</span>
         <span className="leg int">
           violet (through VOR): target radial · bright violet (through airplane): intercept heading to fly
