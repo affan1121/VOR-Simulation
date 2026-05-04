@@ -194,6 +194,17 @@ describe('referenceRadialForCdi and vorCourseErrorDeg', () => {
     expect(err).toBeCloseTo(25, 5);
     expect(vorCdiNeedleFromCourseError(err)).toBeLessThan(0);
   });
+
+  /**
+   * AIM-style VOT centering: with CDI centered, OBS 000 + FROM (on R-000) or OBS 180 + TO (on R-180).
+   * See `docs/VOR_ACCURACY.md` for references.
+   */
+  it('AIM VOT-style: centered on R-000 with OBS 0 FROM, and on R-180 with OBS 0 TO', () => {
+    expect(vorCourseErrorDeg(0, 0, 'FROM')).toBe(0);
+    expect(vorCdiNeedleFromCourseError(vorCourseErrorDeg(0, 0, 'FROM'))).toBeCloseTo(0, 15);
+    expect(vorCourseErrorDeg(180, 0, 'TO')).toBe(0);
+    expect(vorCdiNeedleFromCourseError(vorCourseErrorDeg(180, 0, 'TO'))).toBeCloseTo(0, 15);
+  });
 });
 
 describe('cdiNeedleDeflection (course deviation indicator)', () => {
