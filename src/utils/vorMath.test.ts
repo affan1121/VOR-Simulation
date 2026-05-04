@@ -28,6 +28,7 @@ import {
   maxDistanceNmAlongRadialInPlanView,
   maxDistanceNmAlongRadialInExtents,
   clampAircraftPositionToStationExtents,
+  INTERCEPT_LEAD_ANGLE_MAX_DEG,
 } from './vorMath';
 
 describe('normalizeHeading', () => {
@@ -277,6 +278,37 @@ describe('wind and ground track', () => {
 describe('recommendedInterceptHeading', () => {
   const st = { x: 0, y: 0 };
 
+  /** Shared invariant for grid tests — fails with a diagnostic context line on mismatch. */
+  function assertInterceptTowardLine(
+    ac: { x: number; y: number },
+    tgt: number,
+    mode: 'INBOUND' | 'OUTBOUND',
+    lead: number,
+    label = ''
+  ): void {
+    const got = recommendedInterceptHeading({
+      aircraft: ac,
+      station: st,
+      targetRadial: tgt,
+      mode,
+      interceptAngleDeg: lead,
+      currentHeading: 0,
+    }).heading;
+    const established = onCourseHeading(tgt, mode);
+    const candA = normalizeHeading(established - lead);
+    const candB = normalizeHeading(established + lead);
+    if (![candA, candB].includes(got)) {
+      throw new Error(`${label}: expected ${candA}° or ${candB}°, got ${got}°`);
+    }
+    const c0 = crossTrackSign(st, ac, tgt);
+    const rate = crossTrackSignRate(st, ac, tgt, got);
+    if (Math.abs(c0) > 1e-3 && rate * c0 >= 0) {
+      throw new Error(
+        `${label}: cross-track not closing (c0=${c0}, rate=${rate}, got=${got})`
+      );
+    }
+  }
+
   it('0° lead returns established on-course heading (no fictitious intercept)', () => {
     const ac = { x: 12, y: -4 };
     const tgt = 90;
@@ -417,6 +449,70 @@ describe('recommendedInterceptHeading', () => {
       currentHeading: 180,
     });
     expect(r.heading).toBe(0);
+  });
+
+  /**
+   * Full combinatorial sweep: every intercept angle degree (1–MAX), every magnetic target radial,
+   * every aircraft direction around the VOR at fixed DME — both inbound and outbound join modes.
+   * (~23.3M cases; validates ±lead membership + cross-track closes toward the extended course.)
+   */
+  it(
+    'exhaustive grid: every lead ° × every target radial ° × every AC bearing ° @ 10 NM',
+    { timeout: 300_000 },
+    () => {
+      const dmeNm = 10;
+      for (let lead = 1; lead <= INTERCEPT_LEAD_ANGLE_MAX_DEG; lead++) {
+        for (let tgt = 0; tgt < 360; tgt++) {
+          for (let acBrg = 0; acBrg < 360; acBrg++) {
+            const θ = (acBrg * Math.PI) / 180;
+            const ac = { x: Math.sin(θ) * dmeNm, y: Math.cos(θ) * dmeNm };
+            const ctx = `lead=${lead} tgt=${tgt} acBrg=${acBrg}`;
+            assertInterceptTowardLine(ac, tgt, 'OUTBOUND', lead, ctx);
+            assertInterceptTowardLine(ac, tgt, 'INBOUND', lead, ctx);
+          }
+        }
+      }
+    }
+  );
+
+  it('intercept magnetic heading does not depend on currentHeading (only turn hint does)', () => {
+    const ac = { x: -6.2, y: -9.1 };
+    const base = recommendedInterceptHeading({
+      aircraft: ac,
+      station: st,
+      targetRadial: 117,
+      mode: 'INBOUND',
+      interceptAngleDeg: 52,
+      currentHeading: 0,
+    }).heading;
+    for (let ch = 1; ch < 360; ch++) {
+      expect(
+        recommendedInterceptHeading({
+          aircraft: ac,
+          station: st,
+          targetRadial: 117,
+          mode: 'INBOUND',
+          interceptAngleDeg: 52,
+          currentHeading: ch,
+        }).heading
+      ).toBe(base);
+    }
+  });
+
+  it('extra DME distances: sparse grid covers remaining NM cases', () => {
+    for (const dmeNm of [2.5, 3, 8, 25, 40, 55]) {
+      for (const lead of [1, 15, 44, 61, 89, 90]) {
+        for (let tgt = 0; tgt < 360; tgt += 5) {
+          for (let acBrg = 0; acBrg < 360; acBrg += 5) {
+            const θ = (acBrg * Math.PI) / 180;
+            const ac = { x: Math.sin(θ) * dmeNm, y: Math.cos(θ) * dmeNm };
+            const ctx = `dme=${dmeNm} lead=${lead} tgt=${tgt} acBrg=${acBrg}`;
+            assertInterceptTowardLine(ac, tgt, 'OUTBOUND', lead, ctx);
+            assertInterceptTowardLine(ac, tgt, 'INBOUND', lead, ctx);
+          }
+        }
+      }
+    }
   });
 });
 
