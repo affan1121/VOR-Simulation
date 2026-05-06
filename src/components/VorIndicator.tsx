@@ -15,6 +15,11 @@ const SYMMETRIC_CHART_HALF_NM_FALLBACK =
   MAP_PLAN_VIEW_HALF_NM - MAP_PLAN_DME_MARGIN_NM;
 
 type Props = {
+  title?: string;
+  compact?: boolean;
+  hideControls?: boolean;
+  hideReadouts?: boolean;
+  hideCompassText?: boolean;
   obs: number;
   heading: number;
   bearingToStation: number;
@@ -25,6 +30,8 @@ type Props = {
   navValid: boolean;
   /** False when flags blank — overhead cone or strict TO/FROM hemisphere boundary only. */
   vorFlagsValid: boolean;
+  /** Training mode: intentionally fail/hide the TO/FROM flag display. */
+  failToFromFlag?: boolean;
   inCone: boolean;
   obsInputRef?: RefObject<HTMLInputElement>;
   onObsChange: (v: number) => void;
@@ -151,6 +158,11 @@ function ObsKnob({ obs, onObsChange }: { obs: number; onObsChange: (v: number) =
  * dots each side (4°–10° by 2°, inner 2° omitted).
  */
 export function VorIndicator({
+  title,
+  compact,
+  hideControls,
+  hideReadouts,
+  hideCompassText,
   obs,
   heading,
   bearingToStation: _bearingToStation,
@@ -160,6 +172,7 @@ export function VorIndicator({
   toFrom,
   navValid,
   vorFlagsValid,
+  failToFromFlag,
   inCone,
   obsInputRef,
   onObsChange,
@@ -169,8 +182,9 @@ export function VorIndicator({
   const needleX = cdi * CDI_PX_FULL;
   const cx = 110;
   const cy = 110;
-  const indicatorOk = navValid && vorFlagsValid;
-  const flagsOk = vorFlagsValid;
+  const flagsOk = vorFlagsValid && !failToFromFlag;
+  // Training flag-failure should not dim a valid CDI needle.
+  const indicatorOk = navValid;
   /** Dashed cue — overhead / cone passage only (abeam ambiguity uses OFF flag without this bar). */
   const passageBlanking = navValid && inCone;
 
@@ -207,35 +221,38 @@ export function VorIndicator({
   }
 
   const labels: ReactNode[] = [];
-  for (let t = 0; t < 360; t += 30) {
-    let text: string;
-    if (t === 0) text = 'N';
-    else if (t === 90) text = 'E';
-    else if (t === 180) text = 'S';
-    else if (t === 270) text = 'W';
-    else text = t.toString().padStart(3, '0');
-    const faceBearing = normalizeHeading(t - obs);
-    const [wx, wy] = ringPoint(cx, cy, faceBearing, LABEL_RING_R);
-    const isCard = t % 90 === 0;
-    labels.push(
-      <text
-        key={`lb-${t}`}
-        x={wx}
-        y={wy}
-        textAnchor="middle"
-        dominantBaseline="middle"
-        fill={isCard ? '#eef4fc' : '#b0c4df'}
-        fontSize={isCard ? 14 : 10}
-        fontWeight={isCard ? 700 : 600}
-        fontFamily="JetBrains Mono, monospace"
-      >
-        {text}
-      </text>
-    );
+  if (!hideCompassText) {
+    for (let t = 0; t < 360; t += 30) {
+      let text: string;
+      if (t === 0) text = 'N';
+      else if (t === 90) text = 'E';
+      else if (t === 180) text = 'S';
+      else if (t === 270) text = 'W';
+      else text = t.toString().padStart(3, '0');
+      const faceBearing = normalizeHeading(t - obs);
+      const [wx, wy] = ringPoint(cx, cy, faceBearing, LABEL_RING_R);
+      const isCard = t % 90 === 0;
+      labels.push(
+        <text
+          key={`lb-${t}`}
+          x={wx}
+          y={wy}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fill={isCard ? '#eef4fc' : '#b0c4df'}
+          fontSize={isCard ? 14 : 10}
+          fontWeight={isCard ? 700 : 600}
+          fontFamily="JetBrains Mono, monospace"
+        >
+          {text}
+        </text>
+      );
+    }
   }
 
   return (
-    <div className="vor-wrap" aria-label="VOR indicator">
+    <div className={`vor-wrap ${compact ? 'vor-wrap-compact' : ''}`} aria-label="VOR indicator">
+      {title && <h4 className="vor-mini-title">{title}</h4>}
       <div className="vor-face-wrap">
       <svg viewBox="0 0 220 220" className="vor-svg">
         <defs>
@@ -357,6 +374,7 @@ export function VorIndicator({
       </div>
       </div>
 
+      {!hideControls && (
       <div className="vor-knob-row vor-obs-open">
         <label className="vor-knob-label vor-obs-open-inner">
           <span className="vor-obs-heading">OBS — selected course to index</span>
@@ -385,7 +403,9 @@ export function VorIndicator({
           />
         </label>
       </div>
+      )}
 
+      {!hideReadouts && (
       <div className="vor-readouts vor-readouts-simple">
         <Readout label="CRS" value={`${Math.round(obs).toString().padStart(3, '0')}°`} hint="OBS selected course" />
         <Readout label="HDG" value={`${Math.round(heading).toString().padStart(3, '0')}°`} hint="Heading" />
@@ -400,6 +420,7 @@ export function VorIndicator({
           <Readout label="DME" value={`${dmeNm.toFixed(1)} NM`} hint="Distance" />
         )}
       </div>
+      )}
     </div>
   );
 }

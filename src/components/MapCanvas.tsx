@@ -37,11 +37,32 @@ type Props = {
   obs: number;
   /** Hemispheric TO/FROM for current OBS + aircraft position (matches instrument). */
   toFrom: 'TO' | 'FROM';
+  /** Training mode: intentionally fail/hide TO/FROM flag (map pill + legend). */
+  failToFromFlag?: boolean;
+  /** Hide the primary blue aircraft symbol. */
+  hideMainAircraft?: boolean;
+  hideLegend?: boolean;
+  /** Training mode: draw one full radial line through both sides for A/B aircraft. */
+  trainingRadialLineDeg?: number;
   interceptRadial?: number;
   /** Recommended magnetic heading to fly for the intercept (full line drawn through aircraft). */
   interceptHeading?: number;
   /** Lead angle from Intercept panel — shown on map readout. */
   interceptAngleDeg?: number;
+  /**
+   * Optional training aircraft rendered in addition to the main sim aircraft.
+   * These are visual comparisons only (not draggable, no trail).
+   */
+  extraAircraft?: {
+    id: 'A' | 'B';
+    aircraft: Position;
+    heading: number;
+    label: string;
+    /** Signed course error degrees for selected OBS (training overlay text). */
+    courseErrorDeg?: number;
+  }[];
+  /** Drag training aircraft A/B directly on the map. */
+  onMoveExtraAircraft?: (id: 'A' | 'B', p: Position) => void;
   /** Drag aircraft on the map (student positioning). */
   onMoveAircraft?: (p: Position) => void;
   /** True while pointer is dragging the aircraft. */
@@ -149,9 +170,15 @@ export function MapCanvas({
   radial,
   obs,
   toFrom,
+  failToFromFlag,
+  hideMainAircraft,
+  hideLegend,
+  trainingRadialLineDeg,
   interceptRadial,
   interceptHeading,
   interceptAngleDeg,
+  extraAircraft,
+  onMoveExtraAircraft,
   onMoveAircraft,
   onAircraftDragActive,
   planMapClampHalfNm,
@@ -172,9 +199,15 @@ export function MapCanvas({
     radial,
     obs,
     toFrom,
+    failToFromFlag,
+    hideMainAircraft,
+    hideLegend,
+    trainingRadialLineDeg,
     interceptRadial,
     interceptHeading,
     interceptAngleDeg,
+    extraAircraft,
+    onMoveExtraAircraft,
   });
   sceneRef.current = {
     station,
@@ -185,9 +218,15 @@ export function MapCanvas({
     radial,
     obs,
     toFrom,
+    failToFromFlag,
+    hideMainAircraft,
+    hideLegend,
+    trainingRadialLineDeg,
     interceptRadial,
     interceptHeading,
     interceptAngleDeg,
+    extraAircraft,
+    onMoveExtraAircraft,
   };
 
   useEffect(() => {
@@ -221,10 +260,11 @@ export function MapCanvas({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !onMoveAircraft) return;
+    if (!canvas) return;
 
-    /* Center grab area — symbol spans ~±28 px */
-    const HIT_PX = 52;
+    /* Center grab area — symbol spans ~±28 px; A/B get a slightly larger target. */
+    const HIT_PX_MAIN = 52;
+    const HIT_PX_TRAINING = 88;
     const symLim = VIEW_NM - MAP_PLAN_DME_MARGIN_NM;
 
     const screenToWorld = (px: number, py: number, cw: number, ch: number): Position => {
@@ -240,6 +280,7 @@ export function MapCanvas({
     };
 
     let dragging = false;
+    let dragTarget: 'MAIN' | 'A' | 'B' | null = null;
 
     const onPointerDown = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
@@ -249,31 +290,62 @@ export function MapCanvas({
       const py = e.clientY - rect.top;
       const cx = cw / 2;
       const cy = ch / 2;
-      const ac = aircraftRef.current;
-      const acx = cx + ac.x * NM_TO_PX;
-      const acy = cy - ac.y * NM_TO_PX;
-      const dx = px - acx;
-      const dy = py - acy;
-      if (dx * dx + dy * dy > HIT_PX * HIT_PX) return;
-      dragging = true;
-      canvas.setPointerCapture(e.pointerId);
-      onAircraftDragActive?.(true);
-      onMoveAircraft(screenToWorld(px, py, cw, ch));
+      const scene = sceneRef.current;
+
+      if (scene.extraAircraft?.length && scene.onMoveExtraAircraft) {
+        for (const ex of scene.extraAircraft) {
+          const exx = cx + ex.aircraft.x * NM_TO_PX;
+          const exy = cy - ex.aircraft.y * NM_TO_PX;
+          const dx = px - exx;
+          const dy = py - exy;
+          const hitR = HIT_PX_TRAINING;
+          if (dx * dx + dy * dy <= hitR * hitR) {
+            e.preventDefault();
+            dragTarget = ex.id;
+            dragging = true;
+            canvas.setPointerCapture(e.pointerId);
+            onAircraftDragActive?.(true);
+            scene.onMoveExtraAircraft(ex.id, screenToWorld(px, py, cw, ch));
+            return;
+          }
+        }
+      }
+
+      if (!scene.hideMainAircraft && onMoveAircraft) {
+        const ac = aircraftRef.current;
+        const acx = cx + ac.x * NM_TO_PX;
+        const acy = cy - ac.y * NM_TO_PX;
+        const dx = px - acx;
+        const dy = py - acy;
+        if (dx * dx + dy * dy > HIT_PX_MAIN * HIT_PX_MAIN) return;
+        e.preventDefault();
+        dragTarget = 'MAIN';
+        dragging = true;
+        canvas.setPointerCapture(e.pointerId);
+        onAircraftDragActive?.(true);
+        onMoveAircraft(screenToWorld(px, py, cw, ch));
+      }
     };
 
     const onPointerMove = (e: PointerEvent) => {
       if (!dragging) return;
+      e.preventDefault();
       const rect = canvas.getBoundingClientRect();
       const cw = rect.width;
       const ch = rect.height;
       const px = e.clientX - rect.left;
       const py = e.clientY - rect.top;
-      onMoveAircraft(screenToWorld(px, py, cw, ch));
+      const p = screenToWorld(px, py, cw, ch);
+      if (dragTarget === 'MAIN') onMoveAircraft?.(p);
+      if ((dragTarget === 'A' || dragTarget === 'B') && sceneRef.current.onMoveExtraAircraft) {
+        sceneRef.current.onMoveExtraAircraft(dragTarget, p);
+      }
     };
 
     const finishDrag = (e?: PointerEvent) => {
       if (!dragging) return;
       dragging = false;
+      dragTarget = null;
       if (e && canvas.hasPointerCapture(e.pointerId)) {
         try {
           canvas.releasePointerCapture(e.pointerId);
@@ -287,31 +359,34 @@ export function MapCanvas({
     const onLostCapture = () => {
       if (!dragging) return;
       dragging = false;
+      dragTarget = null;
       onAircraftDragActive?.(false);
     };
 
-    canvas.addEventListener('pointerdown', onPointerDown);
-    canvas.addEventListener('pointermove', onPointerMove);
+    const nonPassive: AddEventListenerOptions = { passive: false };
+    canvas.addEventListener('pointerdown', onPointerDown, nonPassive);
+    canvas.addEventListener('pointermove', onPointerMove, nonPassive);
     canvas.addEventListener('pointerup', finishDrag);
     canvas.addEventListener('pointercancel', finishDrag);
     canvas.addEventListener('lostpointercapture', onLostCapture);
 
     return () => {
       finishDrag();
-      canvas.removeEventListener('pointerdown', onPointerDown);
-      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerdown', onPointerDown, nonPassive);
+      canvas.removeEventListener('pointermove', onPointerMove, nonPassive);
       canvas.removeEventListener('pointerup', finishDrag);
       canvas.removeEventListener('pointercancel', finishDrag);
       canvas.removeEventListener('lostpointercapture', onLostCapture);
     };
-  }, [onMoveAircraft, onAircraftDragActive, planMapClampHalfNm]);
+  }, [onMoveAircraft, onMoveExtraAircraft, onAircraftDragActive, planMapClampHalfNm]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const host = hostRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const ctxMaybe = canvas.getContext('2d');
+    if (!ctxMaybe) return;
+    const ctx = ctxMaybe;
 
     const paint = () => {
       const {
@@ -323,9 +398,13 @@ export function MapCanvas({
         radial,
         obs,
         toFrom,
+        failToFromFlag,
+        hideMainAircraft,
+        trainingRadialLineDeg,
         interceptRadial,
         interceptHeading,
         interceptAngleDeg,
+        extraAircraft,
       } = sceneRef.current;
 
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -454,7 +533,12 @@ export function MapCanvas({
         );
       }
 
+      if (failToFromFlag && trainingRadialLineDeg !== undefined) {
+        drawLineAngle(trainingRadialLineDeg, 'rgba(255, 214, 128, 0.92)', [], 2.75);
+      }
+
       /** Position radial: one ray from VOR along bearing toward aircraft only (no line through opposite side). */
+      if (!hideMainAircraft) {
       const distAcForRay = distanceNm(station, aircraft);
       {
         const radH = (radial * Math.PI) / 180;
@@ -490,8 +574,166 @@ export function MapCanvas({
         ctx.fillStyle = 'rgba(255, 200, 130, 0.98)';
         ctx.fillText(rayLbl, rlx, rly);
       }
+      }
 
       const ac = worldToScreen(aircraft.x, aircraft.y);
+
+      function drawAircraftSymbol(params: {
+        pos: Position;
+        headingDeg: number;
+        style: 'MAIN' | 'A' | 'B';
+        courseErrorDeg?: number;
+      }) {
+        const { pos, headingDeg, style, courseErrorDeg } = params;
+        const p = worldToScreen(pos.x, pos.y);
+        const hRad = (headingDeg * Math.PI) / 180;
+
+        const palette =
+          style === 'MAIN'
+            ? {
+                bodyTop: '#b9dbff',
+                bodyMid: '#6aa4e6',
+                bodyBot: '#2f5f9f',
+                stroke: '#eaf4ff',
+                trim: '#f8fbff',
+                belly: '#173152',
+                shadow: 'rgba(0, 0, 0, 0.5)',
+              }
+            : style === 'A'
+              ? {
+                  bodyTop: '#f0e4ff',
+                  bodyMid: '#b188ff',
+                  bodyBot: '#6940d4',
+                  stroke: 'rgba(245, 235, 255, 0.95)',
+                trim: '#f6ebff',
+                belly: '#301a74',
+                  shadow: 'rgba(0, 0, 0, 0.4)',
+                }
+              : {
+                  bodyTop: '#ddffef',
+                  bodyMid: '#67efb3',
+                  bodyBot: '#1f9a64',
+                  stroke: 'rgba(230, 255, 245, 0.95)',
+                trim: '#ecfff5',
+                belly: '#0c4f33',
+                  shadow: 'rgba(0, 0, 0, 0.4)',
+                };
+
+        ctx.save();
+        ctx.translate(p[0], p[1]);
+        ctx.rotate(hRad);
+
+        ctx.shadowColor = palette.shadow;
+        ctx.shadowBlur = style === 'MAIN' ? 5 : 4;
+        ctx.shadowOffsetX = 1;
+        ctx.shadowOffsetY = 2;
+
+        const bodyGrad = ctx.createLinearGradient(0, -28, 0, 15);
+        bodyGrad.addColorStop(0, palette.bodyTop);
+        bodyGrad.addColorStop(0.35, palette.bodyMid);
+        bodyGrad.addColorStop(1, palette.bodyBot);
+
+        ctx.beginPath();
+        ctx.moveTo(0, -27);
+        ctx.quadraticCurveTo(4.5, -22, 6.5, -14);
+        ctx.lineTo(26, -7);
+        ctx.quadraticCurveTo(28.5, 0, 26, 7);
+        ctx.lineTo(9, 11);
+        ctx.lineTo(12.5, 16.5);
+        ctx.quadraticCurveTo(6.5, 15.5, 0, 14.2);
+        ctx.quadraticCurveTo(-6.5, 15.5, -12.5, 16.5);
+        ctx.lineTo(-9, 11);
+        ctx.lineTo(-26, 7);
+        ctx.quadraticCurveTo(-28.5, 0, -26, -7);
+        ctx.lineTo(-6.5, -14);
+        ctx.quadraticCurveTo(-4.5, -22, 0, -27);
+        ctx.closePath();
+
+        ctx.fillStyle = bodyGrad;
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+
+        ctx.strokeStyle = palette.stroke;
+        ctx.lineWidth = style === 'MAIN' ? 1.85 : 2.05;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // Fuselage center trim gives more "aircraft" depth at all zoom sizes.
+        ctx.strokeStyle = palette.trim;
+        ctx.lineWidth = 1.05;
+        ctx.beginPath();
+        ctx.moveTo(0, -22);
+        ctx.lineTo(0, 12);
+        ctx.stroke();
+
+        // Dark belly accent separates wings/fuselage from map background.
+        ctx.fillStyle = palette.belly;
+        ctx.globalAlpha = 0.42;
+        ctx.beginPath();
+        ctx.moveTo(-9, 4);
+        ctx.quadraticCurveTo(0, 8.8, 9, 4);
+        ctx.quadraticCurveTo(0, 14, -9, 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // Cockpit bubble + tip light makes heading direction easier to read.
+        ctx.fillStyle = 'rgba(15, 28, 48, 0.9)';
+        ctx.beginPath();
+        ctx.ellipse(0, -14, 3.6, 6.1, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+        ctx.lineWidth = 0.9;
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.88)';
+        ctx.beginPath();
+        ctx.arc(0, -24, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Accent: give A/B a dashed outline so it’s obvious they’re training aircraft.
+        if (style !== 'MAIN') {
+          ctx.setLineDash([5, 4]);
+          ctx.strokeStyle = 'rgba(10, 14, 22, 0.55)';
+          ctx.lineWidth = 1.35;
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        ctx.restore();
+
+        // Label near the aircraft (not rotated).
+        if (style !== 'MAIN') {
+          ctx.font = '800 11px Plus Jakarta Sans, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          const lbl = style === 'A' ? 'Aircraft A' : 'Aircraft B';
+          ctx.strokeStyle = 'rgba(10, 14, 22, 0.9)';
+          ctx.lineWidth = 3;
+          ctx.strokeText(lbl, p[0], p[1] - 26);
+          ctx.fillStyle = style === 'A' ? 'rgba(232, 210, 255, 0.98)' : 'rgba(210, 255, 235, 0.98)';
+          ctx.fillText(lbl, p[0], p[1] - 26);
+
+          if (Number.isFinite(courseErrorDeg)) {
+            const absErr = Math.abs(courseErrorDeg ?? 0);
+            const fs = absErr >= 10;
+            const side = (courseErrorDeg ?? 0) > 0 ? 'R' : (courseErrorDeg ?? 0) < 0 ? 'L' : 'C';
+            const offText = fs
+              ? `${absErr.toFixed(1)}° off (FS, ${side})`
+              : `${absErr.toFixed(1)}° off (${side})`;
+            ctx.font = '700 10px JetBrains Mono, monospace';
+            ctx.textBaseline = 'top';
+            ctx.strokeStyle = 'rgba(10, 14, 22, 0.9)';
+            ctx.lineWidth = 3;
+            ctx.strokeText(offText, p[0], p[1] + 18);
+            ctx.fillStyle = fs ? 'rgba(255, 210, 150, 0.98)' : 'rgba(225, 236, 252, 0.98)';
+            ctx.fillText(offText, p[0], p[1] + 18);
+          }
+        }
+      }
 
       /* Full-width intercept track: fly along this heading until the CDI centers on the target radial. */
       if (interceptHeading !== undefined) {
@@ -553,7 +795,7 @@ export function MapCanvas({
       }
 
       const trail = trailRef.current;
-      if (trail.length > 1) {
+      if (trail.length > 1 && !hideMainAircraft) {
         ctx.strokeStyle = 'rgba(200,220,245,0.35)';
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -566,88 +808,54 @@ export function MapCanvas({
         ctx.stroke();
       }
 
-      const hRad = (heading * Math.PI) / 180;
-      ctx.save();
-      ctx.translate(ac[0], ac[1]);
-      ctx.rotate(hRad);
+      // Draw training aircraft first; tether drawn again on top for visibility.
+      if (extraAircraft?.length) {
+        for (const ex of extraAircraft) {
+          drawAircraftSymbol({
+            pos: ex.aircraft,
+            headingDeg: ex.heading,
+            style: ex.id === 'A' ? 'A' : 'B',
+            courseErrorDeg: ex.courseErrorDeg,
+          });
+        }
+      }
 
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-      ctx.shadowBlur = 5;
-      ctx.shadowOffsetX = 1;
-      ctx.shadowOffsetY = 2;
+      // A–B tether: on top of aircraft so it’s always visible; stretches when either is dragged.
+      if (failToFromFlag && extraAircraft && extraAircraft.length >= 2) {
+        const aEx = extraAircraft.find((e) => e.id === 'A');
+        const bEx = extraAircraft.find((e) => e.id === 'B');
+        if (aEx && bEx) {
+          const [ax, ay] = worldToScreen(aEx.aircraft.x, aEx.aircraft.y);
+          const [bx, by] = worldToScreen(bEx.aircraft.x, bEx.aircraft.y);
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          ctx.strokeStyle = 'rgba(14, 22, 36, 0.95)';
+          ctx.lineWidth = 7;
+          ctx.lineCap = 'round';
+          ctx.setLineDash([16, 10]);
+          ctx.stroke();
+          ctx.strokeStyle = 'rgba(255, 220, 130, 0.98)';
+          ctx.lineWidth = 3.5;
+          ctx.shadowColor = 'rgba(255, 200, 80, 0.75)';
+          ctx.shadowBlur = 12;
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
+      }
 
-      const bodyGrad = ctx.createLinearGradient(0, -28, 0, 15);
-      bodyGrad.addColorStop(0, '#9ecfff');
-      bodyGrad.addColorStop(0.35, '#5b93d4');
-      bodyGrad.addColorStop(0.75, '#3d72b8');
-      bodyGrad.addColorStop(1, '#2d5a96');
-
-      ctx.beginPath();
-      ctx.moveTo(0, -27);
-      ctx.quadraticCurveTo(4.5, -22, 6.5, -14);
-      ctx.lineTo(26, -7);
-      ctx.quadraticCurveTo(28.5, 0, 26, 7);
-      ctx.lineTo(9, 11);
-      ctx.lineTo(12.5, 16.5);
-      ctx.quadraticCurveTo(6.5, 15.5, 0, 14.2);
-      ctx.quadraticCurveTo(-6.5, 15.5, -12.5, 16.5);
-      ctx.lineTo(-9, 11);
-      ctx.lineTo(-26, 7);
-      ctx.quadraticCurveTo(-28.5, 0, -26, -7);
-      ctx.lineTo(-6.5, -14);
-      ctx.quadraticCurveTo(-4.5, -22, 0, -27);
-      ctx.closePath();
-
-      ctx.fillStyle = bodyGrad;
-      ctx.fill();
-
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-
-      ctx.strokeStyle = '#eaf4ff';
-      ctx.lineWidth = 1.85;
-      ctx.lineJoin = 'round';
-      ctx.lineCap = 'round';
-      ctx.stroke();
-
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, -22);
-      ctx.lineTo(0, 11);
-      ctx.stroke();
-
-      ctx.fillStyle = 'rgba(15, 28, 48, 0.88)';
-      ctx.beginPath();
-      ctx.ellipse(0, -14, 3.8, 6.2, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      ctx.fillStyle = '#ff5c5c';
-      ctx.beginPath();
-      ctx.arc(-26.5, 0, 2.6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(80, 0, 0, 0.45)';
-      ctx.stroke();
-
-      ctx.fillStyle = '#5dff9a';
-      ctx.beginPath();
-      ctx.arc(26.5, 0, 2.6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(0, 60, 30, 0.35)';
-      ctx.stroke();
-
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-      ctx.beginPath();
-      ctx.arc(0, 13.5, 2, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.restore();
+      if (!hideMainAircraft) {
+        drawAircraftSymbol({ pos: aircraft, headingDeg: heading, style: 'MAIN' });
+      }
 
       /* R-###° + TO/FROM pill near aircraft (same radial as orange ray). */
+      if (!hideMainAircraft) {
       const distAc = distanceNm(station, aircraft);
       const radRad = (radial * Math.PI) / 180;
       const labelAlongNm =
@@ -675,11 +883,12 @@ export function MapCanvas({
       const tfColor =
         toFrom === 'TO' ? 'rgba(165, 210, 255, 0.98)' : 'rgba(235, 185, 145, 0.98)';
       const rLabel = `R-${radialDigits}°`;
+      const tfLabel = failToFromFlag ? 'TF FAIL' : toFrom;
       ctx.font = '700 12px JetBrains Mono, monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const m1 = ctx.measureText(rLabel);
-      const m2 = ctx.measureText(toFrom);
+      const m2 = ctx.measureText(tfLabel);
       const padX = 10;
       const pillW = Math.max(m1.width, m2.width) + padX * 2;
       const pillH = 34;
@@ -709,9 +918,9 @@ export function MapCanvas({
       ctx.strokeText(rLabel, rbx, y1);
       ctx.fillStyle = '#eaf4ff';
       ctx.fillText(rLabel, rbx, y1);
-      ctx.strokeText(toFrom, rbx, y2);
-      ctx.fillStyle = tfColor;
-      ctx.fillText(toFrom, rbx, y2);
+      ctx.strokeText(tfLabel, rbx, y2);
+      ctx.fillStyle = failToFromFlag ? 'rgba(255, 210, 165, 0.98)' : tfColor;
+      ctx.fillText(tfLabel, rbx, y2);
 
       const trk = (track * Math.PI) / 180;
       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
@@ -725,10 +934,11 @@ export function MapCanvas({
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText(
-        `TRK ${Math.round(track).toString().padStart(3, '0')}°  ·  R-${radialDigits}°  ·  ${toFrom}`,
+        `TRK ${Math.round(track).toString().padStart(3, '0')}°  ·  R-${radialDigits}°  ·  ${tfLabel}`,
         10,
         cssH - 12
       );
+      }
     };
 
     paintRef.current = paint;
@@ -744,6 +954,11 @@ export function MapCanvas({
     /* eslint-disable-next-line react-hooks/exhaustive-deps -- scene lives in sceneRef; repaints via useLayoutEffect */
   }, []);
 
+  const extraAircraftTetherSig =
+    extraAircraft
+      ?.map((e) => `${e.id}:${e.aircraft.x}:${e.aircraft.y}`)
+      .join('|') ?? '';
+
   useLayoutEffect(() => {
     paintRef.current?.();
   }, [
@@ -756,33 +971,47 @@ export function MapCanvas({
     radial,
     obs,
     toFrom,
+    failToFromFlag,
+    hideMainAircraft,
+    trainingRadialLineDeg,
     interceptRadial,
     interceptHeading,
     interceptAngleDeg,
+    extraAircraft,
+    extraAircraftTetherSig,
   ]);
 
+  const mapDraggable = Boolean(onMoveAircraft || onMoveExtraAircraft);
+
   return (
-    <div
-      className={`map-host ${onMoveAircraft ? 'map-host-draggable' : ''}`}
-      ref={hostRef}
-    >
+    <div className={`map-host ${mapDraggable ? 'map-host-draggable' : ''}`} ref={hostRef}>
       <canvas ref={canvasRef} className="map-canvas" />
-      <div className="map-legend">
-        <span className="leg tf">
-          brown FROM · blue TO · cream dashed: TO/FROM boundary (spins with OBS) · no OBS line
-          on map
-        </span>
-        <span className="leg fan">gray: cardinal radials (360 / 090 / 180 / 270)</span>
-        <span className="leg rad">
-          orange: position radial — ray from VOR toward you with R-###°; pill shows R-###° and TO/FR
-        </span>
-        <span className="leg obs">OBS on instrument only — map shows boundary + fills</span>
-        <span className="leg int">
-          violet: target radial · bright violet: intercept heading — hidden when R-### matches the leg you picked
-          (outbound = target; inbound = reciprocal)
-        </span>
-        {onMoveAircraft && <span className="leg drag">drag airplane to reposition</span>}
-      </div>
+      {!hideLegend && (
+        <div className="map-legend">
+          <span className="leg tf">
+            brown FROM · blue TO · cream dashed: TO/FROM boundary (spins with OBS) · no OBS line
+            on map
+          </span>
+          <span className="leg fan">gray: cardinal radials (360 / 090 / 180 / 270)</span>
+          <span className="leg rad">
+            orange: position radial — ray from VOR toward you with R-###°; pill shows R-###° and TO/FR
+          </span>
+          <span className="leg obs">OBS on instrument only — map shows boundary + fills</span>
+          <span className="leg int">
+            violet: target radial · bright violet: intercept heading — hidden when R-### matches the leg you picked
+            (outbound = target; inbound = reciprocal)
+          </span>
+          {failToFromFlag && (
+            <span className="leg rad">
+              training: TO/FROM failed — map pill shows <strong>TF FAIL</strong>
+            </span>
+          )}
+          {failToFromFlag && (
+            <span className="leg rad">gold line: selected radial through both sides (Aircraft A/B sit on this line)</span>
+          )}
+          {onMoveAircraft && <span className="leg drag">drag airplane to reposition</span>}
+        </div>
+      )}
     </div>
   );
 }
