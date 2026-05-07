@@ -254,6 +254,42 @@ export default function App() {
     [station]
   );
 
+  /**
+   * Pick a fresh randomized TO/FROM-failure scenario:
+   *  - Random OBS in [0, 359].
+   *  - Aircraft A on a **random radial** (intentionally not always R-OBS) at a random
+   *    distance, so the student can't memorise "A is always correct" — they have to
+   *    look at the map and decide which aircraft is closer to R-OBS.
+   *  - Aircraft B on the **opposite radial** through the VOR at its own random distance,
+   *    preserving the "two aircraft on opposite radials, line through the station" rule.
+   *
+   * We bypass the OBS-change auto-reseed by writing the new OBS into `trainingObsRef`
+   * *before* committing state, so the seeding effect sees `prevObs === snapshot.obs`
+   * on its next run and won't overwrite our random positions with the canonical layout.
+   */
+  const onRandomTfScenario = useCallback(() => {
+    const newObs = Math.floor(Math.random() * 360);
+    const radA = Math.floor(Math.random() * 360);
+    const distA = 4 + Math.random() * 11;
+    const distB = 4 + Math.random() * 11;
+    const θA = (radA * Math.PI) / 180;
+    const aPos: Position = {
+      x: station.x + Math.sin(θA) * distA,
+      y: station.y + Math.cos(θA) * distA,
+    };
+    const θB = ((radA + 180) * Math.PI) / 180;
+    const bPos: Position = {
+      x: station.x + Math.sin(θB) * distB,
+      y: station.y + Math.cos(θB) * distB,
+    };
+    trainingObsRef.current = newObs;
+    setObs(newObs);
+    setTrainingPos({ A: aPos, B: bPos });
+    setTrainingHeadingA(radA);
+    setTrainingHeadingB(normalizeHeading(radA + 180));
+    setToFromQuizChoice(null);
+  }, [station, setObs]);
+
   const tfTraining = useMemo(() => {
     if (!failToFromFlag || !tfSeed || !trainingPos) return tfSeed;
     const a = computeVorReadout({
@@ -342,6 +378,22 @@ export default function App() {
         {failToFromFlag && (
           <div className="tf-fail-warning" role="status" aria-live="polite">
             TO/FROM flag failed — use CDI and position awareness.
+          </div>
+        )}
+
+        {failToFromFlag && (
+          <div className="tf-fail-actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={onRandomTfScenario}
+              title="Randomize OBS and place A/B on random opposite radials"
+            >
+              Random scenario
+            </button>
+            <span className="tf-fail-actions-hint">
+              new OBS, A on a random radial, B on the opposite radial — answer the quiz from the map.
+            </span>
           </div>
         )}
 

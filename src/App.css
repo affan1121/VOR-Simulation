@@ -799,6 +799,20 @@
   font-weight: 700;
 }
 
+.tf-fail-actions {
+  margin-top: 0.65rem;
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tf-fail-actions-hint {
+  font-size: 0.82rem;
+  color: #c9d8eb;
+  line-height: 1.35;
+}
+
 .tf-heading-controls {
   margin-top: 0.65rem;
   display: flex;
