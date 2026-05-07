@@ -59,7 +59,6 @@ export default function App() {
   const [targetRadial, setTargetRadial] = useState(90);
   const [interceptMode, setInterceptMode] = useState<InterceptMode>('INBOUND');
   const [interceptAngle, setInterceptAngle] = useState(0);
-  const [randomExplain, setRandomExplain] = useState<string | null>(null);
   const [failToFromFlag, setFailToFromFlag] = useState(false);
   const [toFromQuizChoice, setToFromQuizChoice] = useState<'A' | 'B' | null>(null);
   const [trainingPos, setTrainingPos] = useState<{ A: Position; B: Position } | null>(null);
@@ -98,7 +97,6 @@ export default function App() {
       const sc = SCENARIOS.find((s) => s.id === id);
       if (!sc) return;
       loadInitial(sc.initial);
-      setRandomExplain(null);
       if (sc.interceptRadial !== undefined) setTargetRadial(sc.interceptRadial);
       if (sc.interceptMode) setInterceptMode(sc.interceptMode);
     },
@@ -135,7 +133,6 @@ export default function App() {
     setTargetRadial(ch.goalRadial);
     setInterceptMode(ch.goalMode);
     setScenarioId('free');
-    setRandomExplain(ch.explanation);
   };
 
   const tfSeed = useMemo(() => {
@@ -536,16 +533,6 @@ export default function App() {
           </div>
         )}
       </section>
-
-      {randomExplain && (
-        <div className="card random-explain">
-          <h4>Random — notes</h4>
-          <p dangerouslySetInnerHTML={{ __html: randomExplain.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
-          <button type="button" className="btn sm" onClick={() => setRandomExplain(null)}>
-            Dismiss
-          </button>
-        </div>
-      )}
 
       <div className="passage-banner" data-visible={snapshot.passageMessageActive}>
         Station passage — expect TO/FROM reversal and CDI instability near the cone
