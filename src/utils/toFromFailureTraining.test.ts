@@ -136,18 +136,151 @@ describe('correctAircraftFromGeometry', () => {
 
   it('flips the correct aircraft when the line rotates past 90° from the OBS', () => {
     const obs = 0;
-    // Aircraft A on R-000 (north of station), B mirrored south. A is on FROM side.
     const aNorth = { x: 0, y: 10 };
     const bSouth = mirrorThroughStation(station, aNorth);
     expect(
       correctAircraftFromGeometry({ station, aircraftA: aNorth, aircraftB: bSouth, obs })
     ).toBe('A');
 
-    // Now rotate so A sits south of station: A becomes the TO/reciprocal aircraft.
     const aSouth = { x: 0, y: -10 };
     const bNorth = mirrorThroughStation(station, aSouth);
     expect(
       correctAircraftFromGeometry({ station, aircraftA: aSouth, aircraftB: bNorth, obs })
+    ).toBe('B');
+  });
+
+  /**
+   * Exhaustive sweep: for every integer OBS in [0, 359], the canonical scenario
+   * (A on R-OBS, B on R-(OBS+180)) must report A as correct. This is the contract
+   * the App.tsx OBS-change reseed depends on: every new OBS course starts with
+   * A on the named radial and the quiz answer = "A".
+   */
+  it('always picks A on the canonical seed for every OBS in [0, 359]', () => {
+    for (let obs = 0; obs < 360; obs += 1) {
+      const sc = buildToFromFailureTrainingScenario({ station, obs, dmeNm: 10 });
+      const got = correctAircraftFromGeometry({
+        station,
+        aircraftA: sc.aircraftA.aircraft,
+        aircraftB: sc.aircraftB.aircraft,
+        obs,
+      });
+      expect(got, `OBS=${obs}`).toBe('A');
+    }
+  });
+
+  /**
+   * Independence from distance: angular distance to OBS — not slant-range — decides.
+   * Push A to 1 NM, B to 50 NM, both on canonical opposite radials → still A.
+   */
+  it('ignores distance from station when picking the correct aircraft', () => {
+    const obs = 73;
+    const ux = Math.sin((obs * Math.PI) / 180);
+    const uy = Math.cos((obs * Math.PI) / 180);
+    const aNear = { x: ux * 1, y: uy * 1 };
+    const bFar = { x: -ux * 50, y: -uy * 50 };
+    expect(
+      correctAircraftFromGeometry({ station, aircraftA: aNear, aircraftB: bFar, obs })
+    ).toBe('A');
+
+    // Reversed: A far on reciprocal, B near on R-OBS → B.
+    const aFarReciprocal = { x: -ux * 50, y: -uy * 50 };
+    const bNearOnObs = { x: ux * 1, y: uy * 1 };
+    expect(
+      correctAircraftFromGeometry({
+        station,
+        aircraftA: aFarReciprocal,
+        aircraftB: bNearOnObs,
+        obs,
+      })
+    ).toBe('B');
+  });
+
+  /**
+   * Asymmetric layouts (post-drag): A and B may share a hemisphere or even share
+   * the same radial. The aircraft whose own radial is closest to OBS must win.
+   */
+  it('picks the aircraft closer in angle to OBS even when both are on the same hemisphere', () => {
+    const obs = 0;
+    // A 5° off OBS (R-005), B 60° off (R-060). Both on FROM side. A wins.
+    const aOnObs5 = {
+      x: Math.sin((5 * Math.PI) / 180) * 10,
+      y: Math.cos((5 * Math.PI) / 180) * 10,
+    };
+    const bOff60 = {
+      x: Math.sin((60 * Math.PI) / 180) * 10,
+      y: Math.cos((60 * Math.PI) / 180) * 10,
+    };
+    expect(
+      correctAircraftFromGeometry({ station, aircraftA: aOnObs5, aircraftB: bOff60, obs })
+    ).toBe('A');
+
+    // Reverse roles: B is closer.
+    expect(
+      correctAircraftFromGeometry({ station, aircraftA: bOff60, aircraftB: aOnObs5, obs })
+    ).toBe('B');
+  });
+
+  it('breaks an exact tie deterministically in favour of A', () => {
+    const obs = 90;
+    const onObs = {
+      x: Math.sin((90 * Math.PI) / 180) * 5,
+      y: Math.cos((90 * Math.PI) / 180) * 5,
+    };
+    expect(
+      correctAircraftFromGeometry({ station, aircraftA: onObs, aircraftB: { ...onObs }, obs })
+    ).toBe('A');
+  });
+
+  /**
+   * Boundary case: aircraft exactly perpendicular to OBS (89° vs 91°). The closer-to-OBS
+   * one wins regardless of which side of the FROM/TO split it lands on. This makes the
+   * answer continuous around the boundary instead of flipping abruptly with vorToFromGeometry's
+   * tie-break.
+   */
+  it('is continuous near the FROM/TO hemisphere boundary', () => {
+    const obs = 0;
+    const aOn89 = {
+      x: Math.sin((89 * Math.PI) / 180) * 10,
+      y: Math.cos((89 * Math.PI) / 180) * 10,
+    };
+    const bOn91 = {
+      x: Math.sin((91 * Math.PI) / 180) * 10,
+      y: Math.cos((91 * Math.PI) / 180) * 10,
+    };
+    expect(
+      correctAircraftFromGeometry({ station, aircraftA: aOn89, aircraftB: bOn91, obs })
+    ).toBe('A');
+  });
+
+  /**
+   * Real-world OBS-change UX scenario the user reported as a "bug":
+   * - Seed scenario at OBS=360: A north (R-360), B south (R-180).
+   * - Student slides OBS to 180 *without* moving aircraft.
+   * - Without the App.tsx reseed, A is now on the TO hemisphere (R-360 vs OBS=180 → 180° apart)
+   *   and B is on the FROM hemisphere (R-180 vs OBS=180 → 0° apart) → quiz answer flips to B.
+   * - With the App.tsx reseed (covered separately), A would be repositioned onto R-180 and stay correct.
+   * This test pins the *raw* geometry behaviour so the reseed-on-OBS-change path is the
+   * *only* thing keeping A as the canonical correct answer; if anyone removes that reseed
+   * and changes OBS, the answer here will (correctly) flip to B and surface the regression.
+   */
+  it('reflects a stale layout when OBS changes and aircraft do not move (regression guard)', () => {
+    const aNorth = { x: 0, y: 10 };
+    const bSouth = mirrorThroughStation({ x: 0, y: 0 }, aNorth);
+    expect(
+      correctAircraftFromGeometry({
+        station: { x: 0, y: 0 },
+        aircraftA: aNorth,
+        aircraftB: bSouth,
+        obs: 360,
+      })
+    ).toBe('A');
+    expect(
+      correctAircraftFromGeometry({
+        station: { x: 0, y: 0 },
+        aircraftA: aNorth,
+        aircraftB: bSouth,
+        obs: 180,
+      })
     ).toBe('B');
   });
 });

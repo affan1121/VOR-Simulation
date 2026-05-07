@@ -66,9 +66,13 @@ export default function App() {
   const [trainingHeadingA, setTrainingHeadingA] = useState<number | null>(null);
   const [trainingHeadingB, setTrainingHeadingB] = useState<number | null>(null);
 
-  /** Last VOR position used for training A/B — only re-seed when the fix moves (new scenario), not when OBS changes. */
+  /** Last VOR position used for training A/B — re-seed when the fix moves (new scenario). */
   const trainingStationRef = useRef<{ x: number; y: number } | null>(null);
-  /** True while TO/FROM training mode has been entered — used to avoid re-seeding when only OBS/tfSeed updates. */
+  /** Last OBS used for training A/B — re-seed when the student picks a new selected course
+   * so A always starts on R-OBS and B on R-(OBS+180) for the new course (matches the
+   * canonical "two aircraft on opposite radials of the selected course" teaching layout). */
+  const trainingObsRef = useRef<number | null>(null);
+  /** True while TO/FROM training mode has been entered — used to avoid re-seeding spuriously. */
   const wasTrainingModeRef = useRef(false);
 
   const activeScenario = useMemo(
@@ -136,6 +140,7 @@ export default function App() {
     if (!failToFromFlag || !tfSeed) {
       wasTrainingModeRef.current = false;
       trainingStationRef.current = null;
+      trainingObsRef.current = null;
       setTrainingPos(null);
       setTrainingHeadingA(null);
       setTrainingHeadingB(null);
@@ -151,7 +156,17 @@ export default function App() {
       prevFix == null || prevFix.x !== st.x || prevFix.y !== st.y;
     trainingStationRef.current = { x: st.x, y: st.y };
 
-    const shouldReseedFromScenario = enteringTraining || stationChanged;
+    const prevObs = trainingObsRef.current;
+    const obsChanged = prevObs == null || prevObs !== snapshot.obs;
+    trainingObsRef.current = snapshot.obs;
+
+    /* Reseed positions whenever the scenario is "new" — first entry, station moved, or
+     * the student picked a new OBS course. The whole demo is "two aircraft on opposite
+     * radials of the **selected** course," so changing OBS *is* a new scenario and the
+     * canonical layout (A on R-OBS, B on R-(OBS+180)) should be restored. Otherwise the
+     * student's drag-rotated layout is preserved across renders. */
+    const shouldReseedFromScenario =
+      enteringTraining || stationChanged || obsChanged;
 
     setTrainingPos((prev) => {
       if (!shouldReseedFromScenario && prev) return prev;
@@ -161,10 +176,10 @@ export default function App() {
       };
     });
     setTrainingHeadingA((prev) =>
-      shouldReseedFromScenario || prev == null ? snapshot.obs : prev
+      enteringTraining || stationChanged || prev == null ? snapshot.obs : prev
     );
     setTrainingHeadingB((prev) =>
-      shouldReseedFromScenario || prev == null ? 180 : prev
+      enteringTraining || stationChanged || prev == null ? 180 : prev
     );
   }, [failToFromFlag, tfSeed, station, snapshot.obs]);
 
@@ -388,26 +403,26 @@ export default function App() {
                   )}
 
                   <p className="tf-quiz-exp">
-                    <strong>Why:</strong> With the flag failed, you can’t depend on TO/FROM to tell you whether the OBS
-                    course is inbound or outbound. The aircraft on the <strong>outbound side</strong> of the selected
-                    course line (where a working flag would show <strong>FROM</strong>) is the one that’s on the named
-                    radial <strong>R-OBS</strong>. The opposite side corresponds to the reciprocal radial and would normally
-                    show <strong>TO</strong>.
+                    <strong>Why:</strong> the named radial <strong>R-OBS</strong> identifies a single direction
+                    <em> from</em> the station. With the flag failed you cannot rely on TO/FROM to tell which side of
+                    the station you are on, so the answer comes from the <strong>map</strong>: the aircraft whose own
+                    radial (its bearing <em>from</em> the VOR) most closely matches the selected OBS is the one on
+                    R-OBS. The other aircraft sits on the reciprocal radial — same line in space, opposite side of
+                    the station — and would normally show <strong>TO</strong>.
                   </p>
                   <p className="tf-quiz-exp">
-                    <strong>CDI deflection (Aircraft A):</strong> in this mode the VOR face above shows{' '}
-                    <strong>Aircraft A</strong> only — heading, radial, and CDI are all from A’s position. So if the
-                    needle is deflected <strong>right</strong>, for <strong>Aircraft A</strong> the selected course lies
-                    to the right (fly right toward the needle). If it’s <strong>left</strong>, the course is to A’s left.
-                    Aircraft B would have its own CDI at its location; you are not seeing B’s needle here, which is why
-                    the map and FROM/TO side matter for choosing A vs B.
+                    <strong>CDI direction does not decide it.</strong> The VOR above is <strong>Aircraft A’s</strong>
+                    instrument. CDI deflection only tells you which side of the OBS course <em>line</em> A is on
+                    (needle right ⇒ course is to A’s right). It does <em>not</em> tell you which hemisphere of the
+                    station A is in — that is exactly the information the failed flag would have provided. A right
+                    deflection is consistent with A being on R-OBS <em>or</em> on the reciprocal; only the map (and
+                    the brown FROM / blue TO shading) settles it.
                   </p>
                   <p className="tf-quiz-exp">
-                    <strong>Safety note:</strong> a failed/misleading TO/FROM indication can make you confidently track
-                    the wrong side of the station. The CDI still gives left/right guidance for the aircraft the
-                    instrument is coupled to — but only if you pair it with where <em>that</em> aircraft is relative to the
-                    VOR and the selected OBS course (and you don’t mistake another aircraft’s geometry for the one on the
-                    gauge).
+                    <strong>Safety note:</strong> a failed or misleading TO/FROM indication can make you confidently
+                    track the wrong leg of the same course line. The CDI still gives correct left/right guidance for
+                    the aircraft the instrument is coupled to, but it must be paired with where <em>that</em> aircraft
+                    is relative to the VOR and the selected OBS course before you commit to a heading.
                   </p>
                 </div>
               )}

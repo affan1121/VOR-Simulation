@@ -4,6 +4,7 @@ import {
   distanceNm,
   normalizeHeading,
   radialFromStation,
+  shortestSignedAngleDeg,
   VOR_CDI_FULL_SCALE_DEG,
   vorCdiNeedleFromCourseError,
   vorCourseErrorDeg,
@@ -92,12 +93,27 @@ export function mirrorThroughStation(station: Position, p: Position): Position {
 }
 
 /**
- * Determine which aircraft is on the named radial R-OBS (the FROM hemisphere of the
- * selected course). With TO/FROM flag failed, the student must use position awareness
- * to identify this aircraft.
+ * Determine which aircraft is "on R-OBS" — i.e. on the named radial of the selected
+ * OBS course. With TO/FROM flag failed, the student must use position awareness on
+ * the map to identify this aircraft instead of trusting the TO/FROM flag.
  *
- * Geometry: an aircraft at radial α is on the FROM hemisphere of OBS β when
- * cos(α − β) ≥ 0, i.e. |α − β| ≤ 90° (mod 360).
+ * Definition of "correct" used here:
+ *   The aircraft whose **own radial from the station is closest in angle to OBS**.
+ *   Equivalently: `|shortestSignedAngleDeg(OBS, radial)|` is smaller for the correct
+ *   aircraft than for the other.
+ *
+ * This subsumes — and is strictly more robust than — the FROM/TO hemisphere rule:
+ *   - For the canonical layout (A on R-OBS, B on R-(OBS+180)): A is at 0°, B at 180°
+ *     → A wins.
+ *   - For any layout where one aircraft is on the FROM hemisphere and the other is
+ *     on the TO hemisphere, the FROM-side one has angular distance < 90° and wins.
+ *   - It also handles **degenerate post-drag cases** where both aircraft are on the
+ *     same hemisphere or even share the same radial (e.g. after dragging through the
+ *     VOR): the one closer to R-OBS wins, with deterministic tie-break in favour of A.
+ *
+ * Note: a pilot with a working TO/FROM flag never sees this ambiguity; the flag would
+ * read FROM for the FROM-hemisphere aircraft and TO for the other. With the flag
+ * failed, "correct" reduces to "which aircraft sits on R-OBS as drawn on the chart."
  */
 export function correctAircraftFromGeometry(params: {
   station: Position;
@@ -107,12 +123,11 @@ export function correctAircraftFromGeometry(params: {
 }): TrainingAircraftId {
   const { station, aircraftA, aircraftB, obs } = params;
   const radA = radialFromStation(station, aircraftA);
-  const tfA = vorToFromGeometry(radA, obs);
-  if (tfA === 'FROM') return 'A';
   const radB = radialFromStation(station, aircraftB);
-  const tfB = vorToFromGeometry(radB, obs);
-  if (tfB === 'FROM') return 'B';
-  // Degenerate case (both on the boundary): default to A.
+  const errA = Math.abs(shortestSignedAngleDeg(obs, radA));
+  const errB = Math.abs(shortestSignedAngleDeg(obs, radB));
+  if (errA < errB) return 'A';
+  if (errB < errA) return 'B';
   return 'A';
 }
 
