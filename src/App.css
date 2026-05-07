@@ -946,13 +946,6 @@
   line-height: 1.5;
 }
 
-.tf-quiz-exp-locked {
-  padding: 0.55rem 0.7rem;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 159, 67, 0.4);
-  background: rgba(255, 159, 67, 0.08);
-  color: #ffd9b8;
-}
 
 @media (max-width: 1100px) {
   .tf-fail-row {

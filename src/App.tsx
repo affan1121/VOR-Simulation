@@ -516,25 +516,6 @@ export default function App() {
                     <div className="tf-quiz-wrong">Not quite. Correct: Aircraft {tfTraining.correct}.</div>
                   )}
 
-                  {tfRandomMode && (
-                    <p className="tf-quiz-exp tf-quiz-exp-locked">
-                      <strong>Random scenario — answer locked.</strong> The correct aircraft was decided
-                      <em> when this random scenario was generated</em>. Sliding OBS afterwards (including
-                      flipping by 180° to the reciprocal) does not change the graded answer — that lets you
-                      study how the FROM/TO halves rotate around a fixed pair of aircraft. Click
-                      <strong> Random scenario</strong> again to draw a new puzzle, or <strong>Exit random</strong>
-                      to return to the canonical reseeding behaviour.
-                    </p>
-                  )}
-
-                  <p className="tf-quiz-exp">
-                    <strong>Why:</strong> the named radial <strong>R-OBS</strong> identifies a single direction
-                    <em> from</em> the station. With the flag failed you cannot rely on TO/FROM to tell which side of
-                    the station you are on, so the answer comes from the <strong>map</strong>: the aircraft whose own
-                    radial (its bearing <em>from</em> the VOR) most closely matches the selected OBS is the one on
-                    R-OBS. The other aircraft sits on the reciprocal radial — same line in space, opposite side of
-                    the station — and would normally show <strong>TO</strong>.
-                  </p>
                   <p className="tf-quiz-exp">
                     <strong>CDI direction does not decide it.</strong> The VOR above is <strong>Aircraft A’s</strong>
                     instrument. CDI deflection only tells you which side of the OBS course <em>line</em> A is on
