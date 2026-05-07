@@ -813,6 +813,11 @@
   line-height: 1.35;
 }
 
+.tf-fail-actions-hint-active {
+  color: #ffd9b8;
+  font-weight: 600;
+}
+
 .tf-heading-controls {
   margin-top: 0.65rem;
   display: flex;

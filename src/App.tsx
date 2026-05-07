@@ -65,6 +65,10 @@ export default function App() {
   const [trainingPos, setTrainingPos] = useState<{ A: Position; B: Position } | null>(null);
   const [trainingHeadingA, setTrainingHeadingA] = useState<number | null>(null);
   const [trainingHeadingB, setTrainingHeadingB] = useState<number | null>(null);
+  /** When the student loaded a randomized TO/FROM scenario, OBS changes must NOT
+   * snap A/B back onto R-OBS / R-(OBS+180); the whole point of the random quiz is
+   * to vary OBS against fixed aircraft and watch the correct answer flip. */
+  const [tfRandomMode, setTfRandomMode] = useState(false);
 
   /** Last VOR position used for training A/B — re-seed when the fix moves (new scenario). */
   const trainingStationRef = useRef<{ x: number; y: number } | null>(null);
@@ -160,13 +164,16 @@ export default function App() {
     const obsChanged = prevObs == null || prevObs !== snapshot.obs;
     trainingObsRef.current = snapshot.obs;
 
-    /* Reseed positions whenever the scenario is "new" — first entry, station moved, or
-     * the student picked a new OBS course. The whole demo is "two aircraft on opposite
-     * radials of the **selected** course," so changing OBS *is* a new scenario and the
-     * canonical layout (A on R-OBS, B on R-(OBS+180)) should be restored. Otherwise the
-     * student's drag-rotated layout is preserved across renders. */
+    /* Reseed positions for "new scenario" events — first entry to the mode or
+     * a station move. OBS changes also reseed for the *canonical* teaching layout
+     * (A on R-OBS, B on R-(OBS+180)), but **not** when the student is in random-quiz
+     * mode: there the aircraft must stay fixed while OBS varies so the quiz answer
+     * can flip, which is the whole pedagogical point of "vary OBS against a fixed
+     * geometry." Drag-induced renders are preserved in either case. */
     const shouldReseedFromScenario =
-      enteringTraining || stationChanged || obsChanged;
+      enteringTraining ||
+      stationChanged ||
+      (obsChanged && !tfRandomMode);
 
     setTrainingPos((prev) => {
       if (!shouldReseedFromScenario && prev) return prev;
@@ -181,7 +188,7 @@ export default function App() {
     setTrainingHeadingB((prev) =>
       enteringTraining || stationChanged || prev == null ? 180 : prev
     );
-  }, [failToFromFlag, tfSeed, station, snapshot.obs]);
+  }, [failToFromFlag, tfSeed, station, snapshot.obs, tfRandomMode]);
 
   /**
    * Drag handler for training aircraft. The pair is constrained to a single line
@@ -263,9 +270,10 @@ export default function App() {
    *  - Aircraft B on the **opposite radial** through the VOR at its own random distance,
    *    preserving the "two aircraft on opposite radials, line through the station" rule.
    *
-   * We bypass the OBS-change auto-reseed by writing the new OBS into `trainingObsRef`
-   * *before* committing state, so the seeding effect sees `prevObs === snapshot.obs`
-   * on its next run and won't overwrite our random positions with the canonical layout.
+   * Activates `tfRandomMode` so subsequent OBS changes do **not** reseed the layout —
+   * the student is supposed to vary OBS against fixed aircraft to see the quiz answer
+   * flip. We also write the new OBS into `trainingObsRef` to suppress the immediate
+   * post-click reseed.
    */
   const onRandomTfScenario = useCallback(() => {
     const newObs = Math.floor(Math.random() * 360);
@@ -283,6 +291,7 @@ export default function App() {
       y: station.y + Math.cos(θB) * distB,
     };
     trainingObsRef.current = newObs;
+    setTfRandomMode(true);
     setObs(newObs);
     setTrainingPos({ A: aPos, B: bPos });
     setTrainingHeadingA(radA);
@@ -365,6 +374,7 @@ export default function App() {
               onChange={(e) => {
                 setFailToFromFlag(e.target.checked);
                 setToFromQuizChoice(null);
+                setTfRandomMode(false);
                 if (!e.target.checked) {
                   setTrainingHeadingA(null);
                   setTrainingHeadingB(null);
@@ -391,9 +401,26 @@ export default function App() {
             >
               Random scenario
             </button>
-            <span className="tf-fail-actions-hint">
-              new OBS, A on a random radial, B on the opposite radial — answer the quiz from the map.
-            </span>
+            {tfRandomMode ? (
+              <>
+                <span className="tf-fail-actions-hint tf-fail-actions-hint-active">
+                  Random quiz active — changing OBS will not move the aircraft. Vary OBS to watch the
+                  correct answer flip.
+                </span>
+                <button
+                  type="button"
+                  className="btn sm"
+                  onClick={() => setTfRandomMode(false)}
+                  title="Return OBS-change behaviour to the canonical 'A on R-OBS' reseed"
+                >
+                  Exit random
+                </button>
+              </>
+            ) : (
+              <span className="tf-fail-actions-hint">
+                new OBS, A on a random radial, B on the opposite radial — answer the quiz from the map.
+              </span>
+            )}
           </div>
         )}
 
