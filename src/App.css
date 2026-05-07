@@ -50,11 +50,7 @@
   width: auto;
   display: block;
   flex-shrink: 0;
-  background: #ffffff;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 6px 18px rgba(8, 78, 156, 0.35), 0 1px 0 rgba(255, 255, 255, 0.4) inset;
+  filter: drop-shadow(0 4px 14px rgba(10, 102, 204, 0.45));
 }
 
 .hero-divider {
@@ -1207,9 +1203,7 @@
   }
 
   .hero-logo {
-    height: 44px;
-    padding: 8px 12px;
-    border-radius: 10px;
+    height: 48px;
   }
 
   .hero-divider {
