@@ -395,14 +395,19 @@ export default function App() {
                     show <strong>TO</strong>.
                   </p>
                   <p className="tf-quiz-exp">
-                    <strong>CDI deflection:</strong> the needle shows which way the selected course lies. If the needle
-                    is deflected <strong>right</strong>, the selected course is to your right (turn right toward the
-                    needle). If it’s <strong>left</strong>, the course is to your left.
+                    <strong>CDI deflection (Aircraft A):</strong> in this mode the VOR face above shows{' '}
+                    <strong>Aircraft A</strong> only — heading, radial, and CDI are all from A’s position. So if the
+                    needle is deflected <strong>right</strong>, for <strong>Aircraft A</strong> the selected course lies
+                    to the right (fly right toward the needle). If it’s <strong>left</strong>, the course is to A’s left.
+                    Aircraft B would have its own CDI at its location; you are not seeing B’s needle here, which is why
+                    the map and FROM/TO side matter for choosing A vs B.
                   </p>
                   <p className="tf-quiz-exp">
                     <strong>Safety note:</strong> a failed/misleading TO/FROM indication can make you confidently track
-                    the wrong side of the station. The CDI still provides left/right guidance — but only if you pair it
-                    with where you are relative to the VOR and the selected OBS course.
+                    the wrong side of the station. The CDI still gives left/right guidance for the aircraft the
+                    instrument is coupled to — but only if you pair it with where <em>that</em> aircraft is relative to the
+                    VOR and the selected OBS course (and you don’t mistake another aircraft’s geometry for the one on the
+                    gauge).
                   </p>
                 </div>
               )}
