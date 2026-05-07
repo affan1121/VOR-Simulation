@@ -1,3 +1,40 @@
+/* Design tokens. Pulled from the INRAT logo so the brand colour cascades through
+ * primary buttons, focus rings, links, and accent bars consistently. */
+:root {
+  --brand-50: #eaf4ff;
+  --brand-200: #9ec8ff;
+  --brand-400: #4f9cff;
+  --brand-500: #1b81f0;
+  --brand-600: #0a66cc;
+  --brand-700: #084e9c;
+
+  --bg-0: #070b13;
+  --bg-1: #0c1320;
+  --bg-2: #111a2a;
+  --bg-3: #18253a;
+
+  --line-1: rgba(255, 255, 255, 0.06);
+  --line-2: rgba(125, 159, 210, 0.18);
+  --line-3: rgba(125, 159, 210, 0.28);
+
+  --ink-1: #f3f7fc;
+  --ink-2: #c9d8eb;
+  --ink-3: #93a7c4;
+  --ink-4: #6c80a0;
+
+  --accent-amber: #ffb469;
+  --accent-mint: #67e6b3;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.45);
+  --ring: 0 0 0 3px rgba(27, 129, 240, 0.32);
+}
+
 *,
 *::before,
 *::after {
@@ -13,10 +50,17 @@ body,
 
 body {
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-  background: radial-gradient(1200px 800px at 20% -10%, #152238 0%, #0a0f18 55%);
-  color: #e8eef6;
-  line-height: 1.45;
+  background:
+    radial-gradient(1100px 720px at 12% -8%, rgba(27, 129, 240, 0.18) 0%, transparent 60%),
+    radial-gradient(900px 600px at 92% -4%, rgba(103, 230, 179, 0.08) 0%, transparent 65%),
+    linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 60%);
+  background-attachment: fixed;
+  color: var(--ink-1);
+  line-height: 1.5;
   overflow-wrap: anywhere;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 html {
@@ -34,14 +78,56 @@ h4 {
   font-weight: 700;
   letter-spacing: -0.02em;
   margin: 0 0 0.35rem;
+  color: var(--ink-1);
 }
 
 p {
   margin: 0 0 0.5rem;
 }
 
+a {
+  color: var(--brand-400);
+}
+
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
+  color: inherit;
+}
+
+/* Unified focus ring across form controls and buttons. */
+:where(button, input, select, textarea, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-color: var(--brand-500);
+}
+
+/* Reusable “eyebrow” label above section titles. */
+.eyebrow {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 0.35rem;
+}
+
+::selection {
+  background: rgba(27, 129, 240, 0.45);
+  color: #fff;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(125, 159, 210, 0.18);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(125, 159, 210, 0.32);
 }

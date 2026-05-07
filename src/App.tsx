@@ -356,13 +356,20 @@ export default function App() {
       <StartHere />
 
       <header className="hero">
-        <img
-          src={inratLogo}
-          alt="INRAT Exam Prep"
-          className="hero-logo"
-        />
-        <div>
-          <h1>INRAT Exam Prep VOR Simulator</h1>
+        <div className="hero-brand">
+          <img src={inratLogo} alt="INRAT Exam Prep" className="hero-logo" />
+          <div className="hero-divider" aria-hidden="true" />
+          <div className="hero-text">
+            <span className="eyebrow">VOR Navigation Trainer</span>
+            <h1 className="hero-title">VOR Simulator</h1>
+            <p className="hero-tagline">
+              Interactive practice for INRAT-style intercepts, OBS course tracking, TO/FROM logic
+              and station passage.
+            </p>
+          </div>
+        </div>
+        <div className="hero-meta" aria-hidden="true">
+          <span className="hero-pill">v1.0</span>
         </div>
       </header>
 
