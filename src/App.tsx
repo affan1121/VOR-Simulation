@@ -23,6 +23,7 @@ import {
   correctAircraftFromGeometry,
   mirrorThroughStation,
 } from './utils/toFromFailureTraining';
+import inratLogo from './assets/inrat-logo.png';
 import './App.css';
 
 export default function App() {
@@ -355,6 +356,11 @@ export default function App() {
       <StartHere />
 
       <header className="hero">
+        <img
+          src={inratLogo}
+          alt="INRAT Exam Prep"
+          className="hero-logo"
+        />
         <div>
           <h1>INRAT Exam Prep VOR Simulator</h1>
         </div>

@@ -12,10 +12,23 @@
 
 .hero {
   margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.hero-logo {
+  height: 60px;
+  width: auto;
+  display: block;
+  flex-shrink: 0;
+  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.5));
 }
 
 .hero h1 {
   font-size: 1.65rem;
+  margin: 0;
 }
 
 .sub {
@@ -1055,6 +1068,10 @@
   .hero h1 {
     font-size: 1.35rem;
     line-height: 1.2;
+  }
+
+  .hero-logo {
+    height: 44px;
   }
 
   .sub {
