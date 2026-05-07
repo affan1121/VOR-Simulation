@@ -17,7 +17,12 @@ import {
   type InterceptMode,
 } from './utils/vorMath';
 import type { Position, ScenarioId } from './types';
-import { buildToFromFailureTrainingScenario, computeVorReadout } from './utils/toFromFailureTraining';
+import {
+  buildToFromFailureTrainingScenario,
+  computeVorReadout,
+  correctAircraftFromGeometry,
+  mirrorThroughStation,
+} from './utils/toFromFailureTraining';
 import './App.css';
 
 export default function App() {
@@ -124,7 +129,6 @@ export default function App() {
       obs: snapshot.obs,
       heading: snapshot.obs,
       dmeNm: 10,
-      crossTrackOffsetNm: 1.2,
     });
   }, [failToFromFlag, station, snapshot.obs]);
 
@@ -160,15 +164,80 @@ export default function App() {
       shouldReseedFromScenario || prev == null ? snapshot.obs : prev
     );
     setTrainingHeadingB((prev) =>
-      shouldReseedFromScenario || prev == null ? snapshot.obs : prev
+      shouldReseedFromScenario || prev == null ? 180 : prev
     );
   }, [failToFromFlag, tfSeed, station, snapshot.obs]);
 
-  const onMoveTrainingAircraft = useCallback((id: 'A' | 'B', p: Position) => {
-    setTrainingPos((prev) =>
-      prev ? (id === 'A' ? { ...prev, A: p } : { ...prev, B: p }) : prev
-    );
-  }, []);
+  /**
+   * Drag handler for training aircraft. The pair is constrained to a single line
+   * through the VOR (cursor + station define the line direction), but each aircraft
+   * keeps its own distance from the station, and an aircraft can be dragged **past
+   * the station onto the opposite radial** without making the other aircraft jump.
+   *
+   * Behavior:
+   * - The dragged aircraft snaps to the cursor; this sets the line direction.
+   * - The other aircraft preserves its distance from the VOR and is placed on
+   *   whichever side of the VOR (along the new line) is closest to its previous
+   *   position. That keeps it stationary whenever the new line still passes through
+   *   it (typical small drags), and avoids the visible teleport when the dragged
+   *   aircraft slides through the VOR onto the opposite radial.
+   * - When dragged across the VOR the two aircraft can momentarily share the same
+   *   radial (both on R-α at different distances); rotating or pulling either back
+   *   restores the opposite-radial layout.
+   *
+   * Edge case: if the dragged aircraft sits exactly on the VOR, the line direction
+   * is undefined — we leave the other aircraft where it was.
+   */
+  const onMoveTrainingAircraft = useCallback(
+    (id: 'A' | 'B', p: Position) => {
+      setTrainingPos((prev) => {
+        if (!prev) {
+          return id === 'A'
+            ? { A: p, B: mirrorThroughStation(station, p) }
+            : { A: mirrorThroughStation(station, p), B: p };
+        }
+
+        const dx = p.x - station.x;
+        const dy = p.y - station.y;
+        const r = Math.hypot(dx, dy);
+
+        const otherKey = id === 'A' ? 'B' : 'A';
+        const oldOther = prev[otherKey];
+        const distOther = Math.hypot(
+          oldOther.x - station.x,
+          oldOther.y - station.y
+        );
+
+        let newOther: Position;
+        if (r < 1e-6) {
+          newOther = oldOther;
+        } else {
+          const ux = dx / r;
+          const uy = dy / r;
+          const candSame: Position = {
+            x: station.x + ux * distOther,
+            y: station.y + uy * distOther,
+          };
+          const candOpp: Position = {
+            x: station.x - ux * distOther,
+            y: station.y - uy * distOther,
+          };
+          const dSame = Math.hypot(
+            candSame.x - oldOther.x,
+            candSame.y - oldOther.y
+          );
+          const dOpp = Math.hypot(
+            candOpp.x - oldOther.x,
+            candOpp.y - oldOther.y
+          );
+          newOther = dSame <= dOpp ? candSame : candOpp;
+        }
+
+        return id === 'A' ? { A: p, B: newOther } : { A: newOther, B: p };
+      });
+    },
+    [station]
+  );
 
   const tfTraining = useMemo(() => {
     if (!failToFromFlag || !tfSeed || !trainingPos) return tfSeed;
@@ -184,7 +253,13 @@ export default function App() {
       heading: trainingHeadingB ?? snapshot.obs,
       obs: snapshot.obs,
     });
-    return { obs: snapshot.obs, aircraftA: a, aircraftB: b, correct: 'A' as const };
+    const correct = correctAircraftFromGeometry({
+      station,
+      aircraftA: trainingPos.A,
+      aircraftB: trainingPos.B,
+      obs: snapshot.obs,
+    });
+    return { obs: snapshot.obs, aircraftA: a, aircraftB: b, correct };
   }, [failToFromFlag, tfSeed, trainingPos, station, snapshot.obs, trainingHeadingA, trainingHeadingB]);
 
   return (
@@ -194,12 +269,10 @@ export default function App() {
       <header className="hero">
         <div>
           <h1>INRAT Exam Prep VOR Simulator</h1>
-          <p className="sub">
-            Use <strong>Student: heading + GS</strong> to type heading and ground speed, or use wind with airspeed. Set
-            intercept angle by number under Intercept.
-          </p>
         </div>
       </header>
+
+      <StudentGuide />
 
       <section className="scenario-bar card scenario-bar-simple">
         <label>
@@ -400,66 +473,36 @@ export default function App() {
 
         <div className="col vor-col">
           {failToFromFlag && tfTraining ? (
-            <div className="dual-mini-vor">
+            <div className="single-tf-vor">
               <div className="vor-clone">
-                <h4 className="vor-mini-title">VOR A</h4>
-                <div className="vor-clone-scale">
-                  <VorIndicator
-                    hideControls={true}
-                    hideReadouts={true}
-                    obs={snapshot.obs}
-                    heading={tfTraining.aircraftA.heading}
-                    bearingToStation={tfTraining.aircraftA.bearingToStation}
-                    radial={tfTraining.aircraftA.radial}
-                    dmeNm={tfTraining.aircraftA.dmeNm}
-                    cdi={tfTraining.aircraftA.cdi}
-                    toFrom={tfTraining.aircraftA.toFromGeometry}
-                    navValid={true}
-                    vorFlagsValid={true}
-                    inCone={false}
-                    failToFromFlag={true}
-                    onObsChange={(v) => setObs(v)}
-                  />
-                </div>
+                <h4 className="vor-mini-title">VOR (TO/FROM failed)</h4>
+                <VorIndicator
+                  hideControls={false}
+                  hideReadouts={true}
+                  obs={snapshot.obs}
+                  heading={tfTraining.aircraftA.heading}
+                  bearingToStation={tfTraining.aircraftA.bearingToStation}
+                  radial={tfTraining.aircraftA.radial}
+                  dmeNm={tfTraining.aircraftA.dmeNm}
+                  cdi={tfTraining.aircraftA.cdi}
+                  toFrom={tfTraining.aircraftA.toFromGeometry}
+                  navValid={true}
+                  vorFlagsValid={true}
+                  inCone={false}
+                  failToFromFlag={true}
+                  onObsChange={(v) => setObs(v)}
+                />
                 <p className="vor-cdi-dev">
-                  Aircraft radial: <strong>R-{formatMagneticThreeDigit360(tfTraining.aircraftA.radial)}°</strong>
+                  Aircraft A radial: <strong>R-{formatMagneticThreeDigit360(tfTraining.aircraftA.radial)}°</strong>
                 </p>
                 <p className="vor-cdi-dev">
-                  CDI deviation:{' '}
+                  Aircraft B radial: <strong>R-{formatMagneticThreeDigit360(tfTraining.aircraftB.radial)}°</strong>
+                </p>
+                <p className="vor-cdi-dev">
+                  CDI (Aircraft A):{' '}
                   <strong>
                     {Math.abs(tfTraining.aircraftA.courseErrorDeg).toFixed(1)}°{' '}
                     {tfTraining.aircraftA.cdi < 0 ? 'LEFT' : tfTraining.aircraftA.cdi > 0 ? 'RIGHT' : 'CENTER'}
-                  </strong>
-                </p>
-              </div>
-              <div className="vor-clone">
-                <h4 className="vor-mini-title">VOR B</h4>
-                <div className="vor-clone-scale">
-                  <VorIndicator
-                    hideControls={true}
-                    hideReadouts={true}
-                    obs={snapshot.obs}
-                    heading={tfTraining.aircraftB.heading}
-                    bearingToStation={tfTraining.aircraftB.bearingToStation}
-                    radial={tfTraining.aircraftB.radial}
-                    dmeNm={tfTraining.aircraftB.dmeNm}
-                    cdi={tfTraining.aircraftB.cdi}
-                    toFrom={tfTraining.aircraftB.toFromGeometry}
-                    navValid={true}
-                    vorFlagsValid={true}
-                    inCone={false}
-                    failToFromFlag={true}
-                    onObsChange={(v) => setObs(v)}
-                  />
-                </div>
-                <p className="vor-cdi-dev">
-                  Aircraft radial: <strong>R-{formatMagneticThreeDigit360(tfTraining.aircraftB.radial)}°</strong>
-                </p>
-                <p className="vor-cdi-dev">
-                  CDI deviation:{' '}
-                  <strong>
-                    {Math.abs(tfTraining.aircraftB.courseErrorDeg).toFixed(1)}°{' '}
-                    {tfTraining.aircraftB.cdi < 0 ? 'LEFT' : tfTraining.aircraftB.cdi > 0 ? 'RIGHT' : 'CENTER'}
                   </strong>
                 </p>
               </div>
@@ -542,8 +585,6 @@ export default function App() {
           behavior is a training approximation only.
         </p>
       </footer>
-
-      <StudentGuide />
     </div>
   );
 }

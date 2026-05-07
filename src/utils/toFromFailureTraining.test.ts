@@ -3,6 +3,8 @@ import { normalizeHeading } from './vorMath';
 import {
   buildToFromFailureTrainingScenario,
   computeVorReadout,
+  correctAircraftFromGeometry,
+  mirrorThroughStation,
   resolveToFromFlagFailedDisplay,
 } from './toFromFailureTraining';
 
@@ -76,29 +78,32 @@ describe('computeVorReadout', () => {
 describe('buildToFromFailureTrainingScenario', () => {
   const station = { x: 0, y: 0 };
 
-  it('places Aircraft A and B on the same (left) side of the selected radial line', () => {
-    const obs = 270;
-    const sc = buildToFromFailureTrainingScenario({
-      station,
-      obs,
-      dmeNm: 10,
-      crossTrackOffsetNm: 1.3,
-    });
-    // For OBS 270, "left side" means south of the westbound radial for both.
-    expect(Math.sign(sc.aircraftA.aircraft.y)).toBe(Math.sign(sc.aircraftB.aircraft.y));
+  it('places Aircraft A and B on opposite radials through the station', () => {
+    for (const obs of [0, 45, 90, 180, 270, 359]) {
+      const sc = buildToFromFailureTrainingScenario({ station, obs, dmeNm: 10 });
+      // Mirror image through (0,0) — the line A↔B passes through the VOR.
+      expect(sc.aircraftA.aircraft.x).toBeCloseTo(-sc.aircraftB.aircraft.x, 6);
+      expect(sc.aircraftA.aircraft.y).toBeCloseTo(-sc.aircraftB.aircraft.y, 6);
+      // Radials are exact reciprocals (180° apart, modulo 360).
+      const reciprocalOfA = normalizeHeading(sc.aircraftA.radial + 180);
+      const radialB = normalizeHeading(sc.aircraftB.radial);
+      expect(Math.abs(reciprocalOfA - radialB)).toBeLessThan(0.01);
+    }
   });
 
-  it('produces visible CDI deflections for A and B', () => {
-    for (const obs of [0, 45, 90, 180, 270, 359, 360]) {
-      const sc = buildToFromFailureTrainingScenario({
-        station,
-        obs,
-        dmeNm: 10,
-        crossTrackOffsetNm: 1.2,
-      });
-      expect(Math.abs(sc.aircraftA.cdi)).toBeGreaterThan(0.01);
-      expect(Math.abs(sc.aircraftB.cdi)).toBeGreaterThan(0.01);
+  it('keeps both aircraft on the OBS course line so CDIs start centered', () => {
+    for (const obs of [0, 45, 90, 180, 270, 359]) {
+      const sc = buildToFromFailureTrainingScenario({ station, obs, dmeNm: 10 });
+      expect(Math.abs(sc.aircraftA.cdi)).toBeLessThan(0.001);
+      expect(Math.abs(sc.aircraftB.cdi)).toBeLessThan(0.001);
     }
+  });
+
+  it('puts Aircraft A on the FROM side of the selected OBS course', () => {
+    const sc = buildToFromFailureTrainingScenario({ station, obs: 90, dmeNm: 10 });
+    expect(sc.aircraftA.toFromGeometry).toBe('FROM');
+    expect(sc.aircraftB.toFromGeometry).toBe('TO');
+    expect(sc.correct).toBe('A');
   });
 
   it('defaults both headings to selected OBS for direct comparison', () => {
@@ -106,6 +111,44 @@ describe('buildToFromFailureTrainingScenario', () => {
     const sc = buildToFromFailureTrainingScenario({ station, obs });
     expect(sc.aircraftA.heading).toBe(normalizeHeading(obs));
     expect(sc.aircraftB.heading).toBe(normalizeHeading(obs));
+  });
+});
+
+describe('mirrorThroughStation', () => {
+  it('reflects a point through the station so the line passes through it', () => {
+    const station = { x: 0, y: 0 };
+    const p = { x: 3, y: 4 };
+    expect(mirrorThroughStation(station, p)).toEqual({ x: -3, y: -4 });
+  });
+
+  it('preserves distance from the station', () => {
+    const station = { x: 2, y: -1 };
+    const p = { x: 5, y: 3 };
+    const m = mirrorThroughStation(station, p);
+    const dp = Math.hypot(p.x - station.x, p.y - station.y);
+    const dm = Math.hypot(m.x - station.x, m.y - station.y);
+    expect(dm).toBeCloseTo(dp, 9);
+  });
+});
+
+describe('correctAircraftFromGeometry', () => {
+  const station = { x: 0, y: 0 };
+
+  it('flips the correct aircraft when the line rotates past 90° from the OBS', () => {
+    const obs = 0;
+    // Aircraft A on R-000 (north of station), B mirrored south. A is on FROM side.
+    const aNorth = { x: 0, y: 10 };
+    const bSouth = mirrorThroughStation(station, aNorth);
+    expect(
+      correctAircraftFromGeometry({ station, aircraftA: aNorth, aircraftB: bSouth, obs })
+    ).toBe('A');
+
+    // Now rotate so A sits south of station: A becomes the TO/reciprocal aircraft.
+    const aSouth = { x: 0, y: -10 };
+    const bNorth = mirrorThroughStation(station, aSouth);
+    expect(
+      correctAircraftFromGeometry({ station, aircraftA: aSouth, aircraftB: bNorth, obs })
+    ).toBe('B');
   });
 });
 

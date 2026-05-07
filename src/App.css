@@ -193,6 +193,16 @@
   justify-items: center;
 }
 
+.single-tf-vor {
+  display: flex;
+  justify-content: center;
+}
+
+.single-tf-vor .vor-clone {
+  max-width: 360px;
+  gap: 0.4rem;
+}
+
 .vor-clone {
   width: 100%;
   display: flex;

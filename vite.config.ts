@@ -9,4 +9,16 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? './' : '/',
   plugins: [react()],
+  /**
+   * Some setups (network mounts, certain editors, sandboxed filesystems) don't deliver
+   * native FS events reliably to Vite's chokidar watcher, which leaves the dev server
+   * serving stale modules after edits. Polling fixes that — modest CPU cost, but
+   * guarantees HMR sees every save.
+   */
+  server: {
+    watch: {
+      usePolling: true,
+      interval: 250,
+    },
+  },
 }));

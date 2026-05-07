@@ -847,6 +847,61 @@ export function MapCanvas({
           ctx.shadowBlur = 0;
           ctx.setLineDash([]);
           ctx.restore();
+
+          /* Per-aircraft radial labels along the line: midpoint of each half (VOR↔aircraft). */
+          const radialFor = (p: Position): number => {
+            const r = (Math.atan2(p.x - station.x, p.y - station.y) * 180) / Math.PI;
+            return ((r % 360) + 360) % 360;
+          };
+          const halves: Array<{ p: Position; sx: number; sy: number; label: string }> = [
+            {
+              p: aEx.aircraft,
+              sx: (fix[0] + ax) / 2,
+              sy: (fix[1] + ay) / 2,
+              label: `A · R-${formatRadialDigits(radialFor(aEx.aircraft))}°`,
+            },
+            {
+              p: bEx.aircraft,
+              sx: (fix[0] + bx) / 2,
+              sy: (fix[1] + by) / 2,
+              label: `B · R-${formatRadialDigits(radialFor(bEx.aircraft))}°`,
+            },
+          ];
+
+          ctx.font = '700 11px JetBrains Mono, monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          for (const h of halves) {
+            const m = ctx.measureText(h.label);
+            const padX = 8;
+            const padY = 4;
+            const pillW = m.width + padX * 2;
+            const pillH = 18 + padY;
+            const px = h.sx - pillW / 2;
+            const py = h.sy - pillH / 2;
+            const rc = 6;
+            ctx.beginPath();
+            ctx.moveTo(px + rc, py);
+            ctx.lineTo(px + pillW - rc, py);
+            ctx.quadraticCurveTo(px + pillW, py, px + pillW, py + rc);
+            ctx.lineTo(px + pillW, py + pillH - rc);
+            ctx.quadraticCurveTo(px + pillW, py + pillH, px + pillW - rc, py + pillH);
+            ctx.lineTo(px + rc, py + pillH);
+            ctx.quadraticCurveTo(px, py + pillH, px, py + pillH - rc);
+            ctx.lineTo(px, py + rc);
+            ctx.quadraticCurveTo(px, py, px + rc, py);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(12, 20, 32, 0.92)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 220, 130, 0.7)';
+            ctx.lineWidth = 1.4;
+            ctx.stroke();
+            ctx.strokeStyle = 'rgba(8, 12, 20, 0.9)';
+            ctx.lineWidth = 3;
+            ctx.strokeText(h.label, h.sx, h.sy);
+            ctx.fillStyle = 'rgba(255, 230, 170, 0.98)';
+            ctx.fillText(h.label, h.sx, h.sy);
+          }
         }
       }
 

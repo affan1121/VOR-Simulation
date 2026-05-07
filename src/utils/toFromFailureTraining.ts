@@ -80,46 +80,69 @@ function pointOnRadial(station: Position, radialDeg: number, nmOut: number): Pos
   };
 }
 
-function offsetPerpendicular(radialDeg: number, crossNm: number): Position {
-  const θ = (normalizeHeading(radialDeg) * Math.PI) / 180;
-  // Right-of-course unit vector for outbound radial direction.
-  return {
-    x: Math.cos(θ) * crossNm,
-    y: -Math.sin(θ) * crossNm,
-  };
+/**
+ * Mirror a point through the VOR station so that A and B always sit on opposite radials.
+ *
+ * The line connecting A and B passes exactly through the station — this is the constraint
+ * the student manipulates: rotating the pair 360° around the VOR while keeping them
+ * on opposite radials.
+ */
+export function mirrorThroughStation(station: Position, p: Position): Position {
+  return { x: 2 * station.x - p.x, y: 2 * station.y - p.y };
 }
 
 /**
- * Create two aircraft on opposite sides of the selected radial line through the station:
- * - Aircraft A near the named radial R-OBS (outbound side)
- * - Aircraft B near the reciprocal (inbound side)
+ * Determine which aircraft is on the named radial R-OBS (the FROM hemisphere of the
+ * selected course). With TO/FROM flag failed, the student must use position awareness
+ * to identify this aircraft.
  *
- * Both are slightly offset so their CDI needles are not identical, but headings are similar
- * to keep focus on CDI/geometry rather than direction of travel.
+ * Geometry: an aircraft at radial α is on the FROM hemisphere of OBS β when
+ * cos(α − β) ≥ 0, i.e. |α − β| ≤ 90° (mod 360).
+ */
+export function correctAircraftFromGeometry(params: {
+  station: Position;
+  aircraftA: Position;
+  aircraftB: Position;
+  obs: number;
+}): TrainingAircraftId {
+  const { station, aircraftA, aircraftB, obs } = params;
+  const radA = radialFromStation(station, aircraftA);
+  const tfA = vorToFromGeometry(radA, obs);
+  if (tfA === 'FROM') return 'A';
+  const radB = radialFromStation(station, aircraftB);
+  const tfB = vorToFromGeometry(radB, obs);
+  if (tfB === 'FROM') return 'B';
+  // Degenerate case (both on the boundary): default to A.
+  return 'A';
+}
+
+/**
+ * Create two aircraft on opposite radials through the station, connected by a
+ * conceptual line that passes through the VOR. The student rotates this line
+ * 360° around the station by dragging either aircraft on the map.
+ *
+ * Initial geometry:
+ * - Aircraft A on R-OBS (named radial, FROM side) at `dmeNm`.
+ * - Aircraft B on R-(OBS+180) (reciprocal, TO side) at `dmeNm`.
+ *
+ * Both start on the OBS course line so CDIs are centered; rotating the line off the
+ * OBS course makes their CDIs deflect in opposite senses (mirror through the station).
  */
 export function buildToFromFailureTrainingScenario(params: {
   station: Position;
   obs: number;
   /** If omitted, aircraft headings follow selected OBS. */
   heading?: number;
-  /** Along-course distance from station (NM). */
+  /** Distance from station (NM) for both aircraft. */
   dmeNm?: number;
-  /** Perpendicular offset from selected radial line (NM) for visible CDI. */
-  crossTrackOffsetNm?: number;
 }): ToFromFailureTrainingScenario {
   const { station } = params;
   const obs = normalizeHeading(params.obs);
   const heading = normalizeHeading(params.heading ?? obs);
   const dmeNm = Math.max(2, params.dmeNm ?? 10);
-  const crossNm = Math.max(0.5, params.crossTrackOffsetNm ?? 1.2);
 
-  // Base on selected radial side, then keep BOTH aircraft on the same (left) side
-  // of the selected radial line with slight along-track spacing.
-  const base = pointOnRadial(station, obs, dmeNm);
-  const alongB = pointOnRadial(station, obs, Math.max(2, dmeNm - 1.2));
-  const off = offsetPerpendicular(obs, -crossNm);
-  const aPos = { x: base.x + off.x, y: base.y + off.y };
-  const bPos = { x: alongB.x + off.x, y: alongB.y + off.y };
+  const aPos = pointOnRadial(station, obs, dmeNm);
+  const bPos = mirrorThroughStation(station, aPos);
 
   const aircraftA = computeVorReadout({
     station,
@@ -134,9 +157,12 @@ export function buildToFromFailureTrainingScenario(params: {
     obs,
   });
 
-  // In this setup both are on the selected radial side; either can intercept/track by flying toward needle.
-  // Keep deterministic answer for existing quiz UI (A as reference side).
-  const correct: TrainingAircraftId = 'A';
+  const correct = correctAircraftFromGeometry({
+    station,
+    aircraftA: aPos,
+    aircraftB: bPos,
+    obs,
+  });
 
   return { obs, aircraftA, aircraftB, correct };
 }
