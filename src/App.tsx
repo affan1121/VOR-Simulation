@@ -69,6 +69,7 @@ export default function App() {
    * snap A/B back onto R-OBS / R-(OBS+180); the whole point of the random quiz is
    * to study the fixed geometry without the layout being re-snapped. */
   const [tfRandomMode, setTfRandomMode] = useState(false);
+  const [tfRandomSynced, setTfRandomSynced] = useState<'A' | 'B' | null>(null);
 
   /** Last VOR position used for training A/B — re-seed when the fix moves (new scenario). */
   const trainingStationRef = useRef<{ x: number; y: number } | null>(null);
@@ -146,6 +147,7 @@ export default function App() {
       setTrainingPos(null);
       setTrainingHeadingA(null);
       setTrainingHeadingB(null);
+      setTfRandomSynced(null);
       return;
     }
 
@@ -289,6 +291,7 @@ export default function App() {
     };
     trainingObsRef.current = newObs;
     setTfRandomMode(true);
+    setTfRandomSynced(syncWithA ? 'A' : 'B');
     setObs(newObs);
     setTrainingPos({ A: aPos, B: bPos });
     setTrainingHeadingA(radA);
@@ -313,12 +316,14 @@ export default function App() {
     /* Always grade from live geometry using the current OBS. In canonical mode, OBS
      * changes reseed the layout (A on R-OBS). In random mode, OBS changes keep aircraft
      * fixed so the correct answer can legitimately flip. */
-    const liveCorrect = correctAircraftFromGeometry({
-      station,
-      aircraftA: trainingPos.A,
-      aircraftB: trainingPos.B,
-      obs: snapshot.obs,
-    });
+    const liveCorrect = tfRandomMode && tfRandomSynced
+      ? tfRandomSynced
+      : correctAircraftFromGeometry({
+          station,
+          aircraftA: trainingPos.A,
+          aircraftB: trainingPos.B,
+          obs: snapshot.obs,
+        });
     return { obs: snapshot.obs, aircraftA: a, aircraftB: b, correct: liveCorrect };
   }, [
     failToFromFlag,
@@ -329,6 +334,7 @@ export default function App() {
     trainingHeadingA,
     trainingHeadingB,
     tfRandomMode,
+    tfRandomSynced,
   ]);
 
   return (
@@ -396,6 +402,7 @@ export default function App() {
                 setFailToFromFlag(e.target.checked);
                 setToFromQuizChoice(null);
                 setTfRandomMode(false);
+                setTfRandomSynced(null);
                 if (!e.target.checked) {
                   setTrainingHeadingA(null);
                   setTrainingHeadingB(null);
@@ -433,6 +440,7 @@ export default function App() {
                   className="btn sm"
                   onClick={() => {
                     setTfRandomMode(false);
+                    setTfRandomSynced(null);
                   }}
                   title="Return OBS-change behaviour to the canonical 'A on R-OBS' reseed"
                 >

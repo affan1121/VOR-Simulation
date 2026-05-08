@@ -93,13 +93,13 @@ export function mirrorThroughStation(station: Position, p: Position): Position {
 }
 
 /**
- * Determine which aircraft is on the side Aircraft A would intercept from A's
- * current CDI turn cue.
+ * Determine which aircraft is on the side Aircraft A would intercept using
+ * TO/FROM-side exam logic.
  *
  * Training intent:
  * - The displayed instrument belongs to Aircraft A, so students solve from A's cue.
- * - If A's cue is RIGHT/center, grade against OBS.
- * - If A's cue is LEFT, grade against reciprocal(OBS).
+ * - If A is FROM side, grade against OBS (top of OBS).
+ * - If A is TO side, grade against reciprocal(OBS) (bottom of OBS).
  *
  * Then choose whichever aircraft is closer in angular distance to that target radial.
  * Ties resolve to A for deterministic behavior.
@@ -114,9 +114,7 @@ export function correctAircraftFromGeometry(params: {
   const radA = radialFromStation(station, aircraftA);
   const radB = radialFromStation(station, aircraftB);
   const aToFrom = vorToFromGeometry(radA, obs);
-  const aCourseError = vorCourseErrorDeg(radA, obs, aToFrom);
-  const aCdi = vorCdiNeedleFromCourseError(aCourseError);
-  const targetRadial = aCdi < 0 ? reciprocalCourse(obs) : normalizeHeading(obs);
+  const targetRadial = aToFrom === 'FROM' ? normalizeHeading(obs) : reciprocalCourse(obs);
   const errA = Math.abs(shortestSignedAngleDeg(targetRadial, radA));
   const errB = Math.abs(shortestSignedAngleDeg(targetRadial, radB));
   if (errA < errB) return 'A';
