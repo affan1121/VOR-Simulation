@@ -69,14 +69,6 @@ export default function App() {
    * snap A/B back onto R-OBS / R-(OBS+180); the whole point of the random quiz is
    * to study the fixed geometry without the layout being re-snapped. */
   const [tfRandomMode, setTfRandomMode] = useState(false);
-  /** Frozen correct answer for the active random scenario. The "correct" aircraft is
-   * decided **once** at scenario creation (the one on R-OBS at the moment of the click)
-   * and stays constant while the student varies OBS, picks an answer, etc. Without
-   * freezing, flipping OBS by 180° swaps which aircraft the live `correctAircraftFromGeometry`
-   * call reports as correct, which is confusing pedagogically: the random scenario is
-   * "you've been handed two aircraft and a course — identify the one on R-OBS." That
-   * answer doesn't change just because you slide the OBS knob afterwards. */
-  const [tfRandomCorrect, setTfRandomCorrect] = useState<'A' | 'B' | null>(null);
 
   /** Last VOR position used for training A/B — re-seed when the fix moves (new scenario). */
   const trainingStationRef = useRef<{ x: number; y: number } | null>(null);
@@ -173,9 +165,8 @@ export default function App() {
     /* Reseed positions for "new scenario" events — first entry to the mode or
      * a station move. OBS changes also reseed for the *canonical* teaching layout
      * (A on R-OBS, B on R-(OBS+180)), but **not** when the student is in random-quiz
-     * mode: there the aircraft must stay fixed while OBS varies so the quiz answer
-     * can flip, which is the whole pedagogical point of "vary OBS against a fixed
-     * geometry." Drag-induced renders are preserved in either case. */
+   * mode: there the aircraft must stay fixed while OBS varies so the quiz answer
+   * can flip against the fixed geometry. Drag-induced renders are preserved in either case. */
     const shouldReseedFromScenario =
       enteringTraining ||
       stationChanged ||
@@ -277,9 +268,9 @@ export default function App() {
    *    preserving the "two aircraft on opposite radials, line through the station" rule.
    *
    * Activates `tfRandomMode` so subsequent OBS changes do **not** reseed the layout —
-   * the student is supposed to vary OBS against fixed aircraft to see the quiz answer
-   * flip. We also write the new OBS into `trainingObsRef` to suppress the immediate
-   * post-click reseed.
+   * the student is supposed to vary OBS against fixed aircraft and see the correct
+   * answer update from live geometry. We also write the new OBS into `trainingObsRef`
+   * to suppress the immediate post-click reseed.
    */
   const onRandomTfScenario = useCallback(() => {
     const newObs = Math.floor(Math.random() * 360);
@@ -296,15 +287,8 @@ export default function App() {
       x: station.x + Math.sin(θB) * distB,
       y: station.y + Math.cos(θB) * distB,
     };
-    const correctAtCreation = correctAircraftFromGeometry({
-      station,
-      aircraftA: aPos,
-      aircraftB: bPos,
-      obs: newObs,
-    });
     trainingObsRef.current = newObs;
     setTfRandomMode(true);
-    setTfRandomCorrect(correctAtCreation);
     setObs(newObs);
     setTrainingPos({ A: aPos, B: bPos });
     setTrainingHeadingA(radA);
@@ -326,19 +310,16 @@ export default function App() {
       heading: trainingHeadingB ?? snapshot.obs,
       obs: snapshot.obs,
     });
-    /* In random-quiz mode the answer is locked to "the aircraft that was on R-OBS at
-     * scenario creation," so flipping OBS afterwards (or dragging) won't shift the
-     * graded answer. Outside random mode (canonical seed) we compute live, since the
-     * canonical layout reseeds A onto R-OBS on every OBS change anyway and the live
-     * answer always tracks that. */
+    /* Always grade from live geometry using the current OBS. In canonical mode, OBS
+     * changes reseed the layout (A on R-OBS). In random mode, OBS changes keep aircraft
+     * fixed so the correct answer can legitimately flip. */
     const liveCorrect = correctAircraftFromGeometry({
       station,
       aircraftA: trainingPos.A,
       aircraftB: trainingPos.B,
       obs: snapshot.obs,
     });
-    const correct = tfRandomMode && tfRandomCorrect ? tfRandomCorrect : liveCorrect;
-    return { obs: snapshot.obs, aircraftA: a, aircraftB: b, correct };
+    return { obs: snapshot.obs, aircraftA: a, aircraftB: b, correct: liveCorrect };
   }, [
     failToFromFlag,
     tfSeed,
@@ -348,7 +329,6 @@ export default function App() {
     trainingHeadingA,
     trainingHeadingB,
     tfRandomMode,
-    tfRandomCorrect,
   ]);
 
   return (
@@ -416,7 +396,6 @@ export default function App() {
                 setFailToFromFlag(e.target.checked);
                 setToFromQuizChoice(null);
                 setTfRandomMode(false);
-                setTfRandomCorrect(null);
                 if (!e.target.checked) {
                   setTrainingHeadingA(null);
                   setTrainingHeadingB(null);
@@ -454,7 +433,6 @@ export default function App() {
                   className="btn sm"
                   onClick={() => {
                     setTfRandomMode(false);
-                    setTfRandomCorrect(null);
                   }}
                   title="Return OBS-change behaviour to the canonical 'A on R-OBS' reseed"
                 >
