@@ -94,26 +94,15 @@ export function mirrorThroughStation(station: Position, p: Position): Position {
 }
 
 /**
- * Determine which aircraft is on the inbound side for the selected OBS course —
- * i.e. closest to reciprocal(OBS), not OBS itself.
+ * Determine which aircraft is on the side Aircraft A would intercept given A's CDI cue.
  *
- * Definition of "correct" used here:
- *   The aircraft whose **own radial from the station is closest in angle to reciprocal(OBS)**.
- *   Equivalently: `|shortestSignedAngleDeg(reciprocal(OBS), radial)|` is smaller for the correct
- *   aircraft than for the other.
+ * Training intent:
+ * - The displayed instrument belongs to Aircraft A, so students "fly the needle" from A.
+ * - If A's needle is LEFT (negative CDI), grade against reciprocal(OBS) (inbound side).
+ * - If A's needle is RIGHT or centered, grade against OBS (named radial / outbound side).
  *
- * This subsumes — and is strictly more robust than — the FROM/TO hemisphere rule:
- *   - For the canonical layout (A on R-OBS, B on R-(OBS+180)): A is at 0°, B at 180°
- *     → A wins.
- *   - For any layout where one aircraft is on the FROM hemisphere and the other is
- *     on the TO hemisphere, the FROM-side one has angular distance < 90° and wins.
- *   - It also handles **degenerate post-drag cases** where both aircraft are on the
- *     same hemisphere or even share the same radial (e.g. after dragging through the
- *     VOR): the one closer to reciprocal(OBS) wins, with deterministic tie-break in favour of A.
- *
- * Note: a pilot with a working TO/FROM flag never sees this ambiguity; the flag would
- * read FROM for the FROM-hemisphere aircraft and TO for the other. With the flag
- * failed, "correct" reduces to "which aircraft sits on the inbound reciprocal side."
+ * Then choose whichever aircraft is closer in angular distance to that target radial.
+ * Ties resolve to A for deterministic behavior.
  */
 export function correctAircraftFromGeometry(params: {
   station: Position;
@@ -124,9 +113,12 @@ export function correctAircraftFromGeometry(params: {
   const { station, aircraftA, aircraftB, obs } = params;
   const radA = radialFromStation(station, aircraftA);
   const radB = radialFromStation(station, aircraftB);
-  const inboundRef = reciprocalCourse(obs);
-  const errA = Math.abs(shortestSignedAngleDeg(inboundRef, radA));
-  const errB = Math.abs(shortestSignedAngleDeg(inboundRef, radB));
+  const aToFrom = vorToFromGeometry(radA, obs);
+  const aCourseError = vorCourseErrorDeg(radA, obs, aToFrom);
+  const aCdi = vorCdiNeedleFromCourseError(aCourseError, VOR_CDI_FULL_SCALE_DEG);
+  const targetRadial = aCdi < 0 ? reciprocalCourse(obs) : normalizeHeading(obs);
+  const errA = Math.abs(shortestSignedAngleDeg(targetRadial, radA));
+  const errB = Math.abs(shortestSignedAngleDeg(targetRadial, radB));
   if (errA < errB) return 'A';
   if (errB < errA) return 'B';
   return 'A';
