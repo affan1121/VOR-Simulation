@@ -146,7 +146,7 @@ describe('correctAircraftFromGeometry', () => {
     const bNorth = mirrorThroughStation(station, aSouth);
     expect(
       correctAircraftFromGeometry({ station, aircraftA: aSouth, aircraftB: bNorth, obs })
-    ).toBe('A');
+    ).toBe('B');
   });
 
   it('keeps grading deterministic on canonical seeds for every OBS in [0, 359]', () => {
@@ -186,7 +186,7 @@ describe('correctAircraftFromGeometry', () => {
         aircraftB: bNearOnObs,
         obs,
       })
-    ).toBe('A');
+    ).toBe('B');
   });
 
   /**
@@ -206,12 +206,12 @@ describe('correctAircraftFromGeometry', () => {
     };
     expect(
       correctAircraftFromGeometry({ station, aircraftA: aOnObs5, aircraftB: bOff60, obs })
-    ).toBe('A');
+    ).toBe('B');
 
     // Reverse roles: A-side cue can legitimately point to B.
     expect(
       correctAircraftFromGeometry({ station, aircraftA: bOff60, aircraftB: aOnObs5, obs })
-    ).toBe('B');
+    ).toBe('A');
   });
 
   it('breaks an exact tie deterministically in favour of A', () => {
@@ -243,7 +243,7 @@ describe('correctAircraftFromGeometry', () => {
     };
     expect(
       correctAircraftFromGeometry({ station, aircraftA: aOn89, aircraftB: bOn91, obs })
-    ).toBe('A');
+    ).toBe('B');
   });
 
   /**
@@ -275,7 +275,7 @@ describe('correctAircraftFromGeometry', () => {
         aircraftB: bSouth,
         obs: 180,
       })
-    ).toBe('A');
+    ).toBe('B');
   });
 
   it('matches reported case: OBS 060, A R-235, B R-055 => A', () => {

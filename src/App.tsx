@@ -261,11 +261,9 @@ export default function App() {
   /**
    * Pick a fresh randomized TO/FROM-failure scenario:
    *  - Random OBS in [0, 359].
-   *  - Aircraft A on a **random radial** (intentionally not always R-OBS) at a random
-   *    distance, so the student can't memorise "A is always correct" — they have to
-   *    look at the map and decide which aircraft is closer to R-OBS.
-   *  - Aircraft B on the **opposite radial** through the VOR at its own random distance,
+   *  - Randomly sync either Aircraft A or B to R-OBS, with the other on the opposite radial,
    *    preserving the "two aircraft on opposite radials, line through the station" rule.
+   *    This ensures random quizzes produce both A-correct and B-correct situations.
    *
    * Activates `tfRandomMode` so subsequent OBS changes do **not** reseed the layout —
    * the student is supposed to vary OBS against fixed aircraft and see the correct
@@ -274,7 +272,9 @@ export default function App() {
    */
   const onRandomTfScenario = useCallback(() => {
     const newObs = Math.floor(Math.random() * 360);
-    const radA = Math.floor(Math.random() * 360);
+    const syncWithA = Math.random() < 0.5;
+    const radA = syncWithA ? newObs : normalizeHeading(newObs + 180);
+    const radB = normalizeHeading(radA + 180);
     const distA = 4 + Math.random() * 11;
     const distB = 4 + Math.random() * 11;
     const θA = (radA * Math.PI) / 180;
@@ -282,7 +282,7 @@ export default function App() {
       x: station.x + Math.sin(θA) * distA,
       y: station.y + Math.cos(θA) * distA,
     };
-    const θB = ((radA + 180) * Math.PI) / 180;
+    const θB = (radB * Math.PI) / 180;
     const bPos: Position = {
       x: station.x + Math.sin(θB) * distB,
       y: station.y + Math.cos(θB) * distB,
@@ -292,7 +292,7 @@ export default function App() {
     setObs(newObs);
     setTrainingPos({ A: aPos, B: bPos });
     setTrainingHeadingA(radA);
-    setTrainingHeadingB(normalizeHeading(radA + 180));
+    setTrainingHeadingB(radB);
     setToFromQuizChoice(null);
   }, [station, setObs]);
 
@@ -441,7 +441,7 @@ export default function App() {
               </>
             ) : (
               <span className="tf-fail-actions-hint">
-                new OBS, A on a random radial, B on the opposite radial — answer the quiz from the map.
+                New OBS; either A or B is synced to R-OBS, the other to the reciprocal — answer from map + CDI.
               </span>
             )}
           </div>
