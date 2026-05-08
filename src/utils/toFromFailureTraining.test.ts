@@ -103,7 +103,7 @@ describe('buildToFromFailureTrainingScenario', () => {
     const sc = buildToFromFailureTrainingScenario({ station, obs: 90, dmeNm: 10 });
     expect(sc.aircraftA.toFromGeometry).toBe('FROM');
     expect(sc.aircraftB.toFromGeometry).toBe('TO');
-    expect(sc.correct).toBe('A');
+    expect(sc.correct).toBe('B');
   });
 
   it('defaults both headings to selected OBS for direct comparison', () => {
@@ -140,13 +140,13 @@ describe('correctAircraftFromGeometry', () => {
     const bSouth = mirrorThroughStation(station, aNorth);
     expect(
       correctAircraftFromGeometry({ station, aircraftA: aNorth, aircraftB: bSouth, obs })
-    ).toBe('A');
+    ).toBe('B');
 
     const aSouth = { x: 0, y: -10 };
     const bNorth = mirrorThroughStation(station, aSouth);
     expect(
       correctAircraftFromGeometry({ station, aircraftA: aSouth, aircraftB: bNorth, obs })
-    ).toBe('B');
+    ).toBe('A');
   });
 
   /**
@@ -155,7 +155,7 @@ describe('correctAircraftFromGeometry', () => {
    * the App.tsx OBS-change reseed depends on: every new OBS course starts with
    * A on the named radial and the quiz answer = "A".
    */
-  it('always picks A on the canonical seed for every OBS in [0, 359]', () => {
+  it('always picks B on the canonical seed for every OBS in [0, 359]', () => {
     for (let obs = 0; obs < 360; obs += 1) {
       const sc = buildToFromFailureTrainingScenario({ station, obs, dmeNm: 10 });
       const got = correctAircraftFromGeometry({
@@ -164,7 +164,7 @@ describe('correctAircraftFromGeometry', () => {
         aircraftB: sc.aircraftB.aircraft,
         obs,
       });
-      expect(got, `OBS=${obs}`).toBe('A');
+      expect(got, `OBS=${obs}`).toBe('B');
     }
   });
 
@@ -180,7 +180,7 @@ describe('correctAircraftFromGeometry', () => {
     const bFar = { x: -ux * 50, y: -uy * 50 };
     expect(
       correctAircraftFromGeometry({ station, aircraftA: aNear, aircraftB: bFar, obs })
-    ).toBe('A');
+    ).toBe('B');
 
     // Reversed: A far on reciprocal, B near on R-OBS → B.
     const aFarReciprocal = { x: -ux * 50, y: -uy * 50 };
@@ -192,16 +192,16 @@ describe('correctAircraftFromGeometry', () => {
         aircraftB: bNearOnObs,
         obs,
       })
-    ).toBe('B');
+    ).toBe('A');
   });
 
   /**
    * Asymmetric layouts (post-drag): A and B may share a hemisphere or even share
    * the same radial. The aircraft whose own radial is closest to OBS must win.
    */
-  it('picks the aircraft closer in angle to OBS even when both are on the same hemisphere', () => {
+  it('picks the aircraft closer in angle to reciprocal(OBS) even when both are on the same hemisphere', () => {
     const obs = 0;
-    // A 5° off OBS (R-005), B 60° off (R-060). Both on FROM side. A wins.
+    // A at R-005 and B at R-060 with OBS=000; reciprocal is 180, so B is closer and wins.
     const aOnObs5 = {
       x: Math.sin((5 * Math.PI) / 180) * 10,
       y: Math.cos((5 * Math.PI) / 180) * 10,
@@ -212,12 +212,12 @@ describe('correctAircraftFromGeometry', () => {
     };
     expect(
       correctAircraftFromGeometry({ station, aircraftA: aOnObs5, aircraftB: bOff60, obs })
-    ).toBe('A');
+    ).toBe('B');
 
-    // Reverse roles: B is closer.
+    // Reverse roles: A is closer.
     expect(
       correctAircraftFromGeometry({ station, aircraftA: bOff60, aircraftB: aOnObs5, obs })
-    ).toBe('B');
+    ).toBe('A');
   });
 
   it('breaks an exact tie deterministically in favour of A', () => {
@@ -249,7 +249,7 @@ describe('correctAircraftFromGeometry', () => {
     };
     expect(
       correctAircraftFromGeometry({ station, aircraftA: aOn89, aircraftB: bOn91, obs })
-    ).toBe('A');
+    ).toBe('B');
   });
 
   /**
@@ -273,7 +273,7 @@ describe('correctAircraftFromGeometry', () => {
         aircraftB: bSouth,
         obs: 360,
       })
-    ).toBe('A');
+    ).toBe('B');
     expect(
       correctAircraftFromGeometry({
         station: { x: 0, y: 0 },
@@ -281,7 +281,26 @@ describe('correctAircraftFromGeometry', () => {
         aircraftB: bSouth,
         obs: 180,
       })
-    ).toBe('B');
+    ).toBe('A');
+  });
+
+  it('matches reported case: OBS 060, A R-235, B R-055 => A', () => {
+    const a = {
+      x: Math.sin((235 * Math.PI) / 180) * 10,
+      y: Math.cos((235 * Math.PI) / 180) * 10,
+    };
+    const b = {
+      x: Math.sin((55 * Math.PI) / 180) * 10,
+      y: Math.cos((55 * Math.PI) / 180) * 10,
+    };
+    expect(
+      correctAircraftFromGeometry({
+        station,
+        aircraftA: a,
+        aircraftB: b,
+        obs: 60,
+      })
+    ).toBe('A');
   });
 });
 

@@ -3,6 +3,7 @@ import {
   bearingToStation,
   distanceNm,
   normalizeHeading,
+  reciprocalCourse,
   radialFromStation,
   shortestSignedAngleDeg,
   VOR_CDI_FULL_SCALE_DEG,
@@ -65,10 +66,10 @@ export type ToFromFailureTrainingScenario = {
   aircraftA: VORReadout;
   aircraftB: VORReadout;
   /**
-   * Correct aircraft for: "Which aircraft is on the correct side to track the selected radial?"
+   * Correct aircraft for: "Which aircraft is on the correct side to track the selected course inbound?"
    *
-   * In this training mode we define "correct" as the aircraft on the same **named radial**
-   * as the OBS (i.e. the outbound side of the course line, where a normal flag would show FROM).
+   * In this training mode we define "correct" as the aircraft closest to the **reciprocal
+   * radial** of the selected OBS (the inbound/TO side when tracking the selected course).
    */
   correct: TrainingAircraftId;
 };
@@ -93,13 +94,12 @@ export function mirrorThroughStation(station: Position, p: Position): Position {
 }
 
 /**
- * Determine which aircraft is "on R-OBS" — i.e. on the named radial of the selected
- * OBS course. With TO/FROM flag failed, the student must use position awareness on
- * the map to identify this aircraft instead of trusting the TO/FROM flag.
+ * Determine which aircraft is on the inbound side for the selected OBS course —
+ * i.e. closest to reciprocal(OBS), not OBS itself.
  *
  * Definition of "correct" used here:
- *   The aircraft whose **own radial from the station is closest in angle to OBS**.
- *   Equivalently: `|shortestSignedAngleDeg(OBS, radial)|` is smaller for the correct
+ *   The aircraft whose **own radial from the station is closest in angle to reciprocal(OBS)**.
+ *   Equivalently: `|shortestSignedAngleDeg(reciprocal(OBS), radial)|` is smaller for the correct
  *   aircraft than for the other.
  *
  * This subsumes — and is strictly more robust than — the FROM/TO hemisphere rule:
@@ -109,11 +109,11 @@ export function mirrorThroughStation(station: Position, p: Position): Position {
  *     on the TO hemisphere, the FROM-side one has angular distance < 90° and wins.
  *   - It also handles **degenerate post-drag cases** where both aircraft are on the
  *     same hemisphere or even share the same radial (e.g. after dragging through the
- *     VOR): the one closer to R-OBS wins, with deterministic tie-break in favour of A.
+ *     VOR): the one closer to reciprocal(OBS) wins, with deterministic tie-break in favour of A.
  *
  * Note: a pilot with a working TO/FROM flag never sees this ambiguity; the flag would
  * read FROM for the FROM-hemisphere aircraft and TO for the other. With the flag
- * failed, "correct" reduces to "which aircraft sits on R-OBS as drawn on the chart."
+ * failed, "correct" reduces to "which aircraft sits on the inbound reciprocal side."
  */
 export function correctAircraftFromGeometry(params: {
   station: Position;
@@ -124,8 +124,9 @@ export function correctAircraftFromGeometry(params: {
   const { station, aircraftA, aircraftB, obs } = params;
   const radA = radialFromStation(station, aircraftA);
   const radB = radialFromStation(station, aircraftB);
-  const errA = Math.abs(shortestSignedAngleDeg(obs, radA));
-  const errB = Math.abs(shortestSignedAngleDeg(obs, radB));
+  const inboundRef = reciprocalCourse(obs);
+  const errA = Math.abs(shortestSignedAngleDeg(inboundRef, radA));
+  const errB = Math.abs(shortestSignedAngleDeg(inboundRef, radB));
   if (errA < errB) return 'A';
   if (errB < errA) return 'B';
   return 'A';
