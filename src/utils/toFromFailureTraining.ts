@@ -122,6 +122,141 @@ export function correctAircraftFromGeometry(params: {
   return 'A';
 }
 
+/** Small exam-style manoeuvre after setting heading to OBS lubber ("top of OBS"). */
+const INTERCEPT_NEEDLE_DELTA_DEG = 6;
+const INTERCEPT_NEEDLE_STEP_NM = 5;
+const CDI_NEARLY_CENTERED_EPS = 1e-5;
+
+function errDegToTrackedRadial(station: Position, p: Position, trackedRadialDeg: number): number {
+  const r = radialFromStation(station, p);
+  return Math.abs(shortestSignedAngleDeg(normalizeHeading(trackedRadialDeg), r));
+}
+
+function positionAfterFlyingHeadingNm(p: Position, headingDeg: number, nm: number): Position {
+  const θ = (normalizeHeading(headingDeg) * Math.PI) / 180;
+  return {
+    x: p.x + Math.sin(θ) * nm,
+    y: p.y + Math.cos(θ) * nm,
+  };
+}
+
+/**
+ * Reduction in radial error toward `trackedRadialDeg` after a tiny turn in the cockpit
+ * "fly toward the needle" sense (CDI left means turn left a few magnetic degrees, then fly a short NM).
+ * Uses heading = OBS for both aircraft—the exam procedural setup the student described.
+ *
+ * Larger positive score ⇒ that aircraft matches the intercept implied by needle deflection.
+ */
+function interceptNeedleCueScore(params: {
+  station: Position;
+  aircraft: Position;
+  obsDeg: number;
+  trackedRadialDeg: number;
+  headingForObsCoupling: number;
+  obsCourse: number;
+}): number {
+  const {
+    station,
+    aircraft,
+    obsDeg,
+    trackedRadialDeg,
+    headingForObsCoupling,
+    obsCourse,
+  } = params;
+  const obsN = normalizeHeading(obsDeg);
+
+  const rAtObsHeading = computeVorReadout({
+    station,
+    aircraft,
+    heading: headingForObsCoupling,
+    obs: obsCourse,
+  });
+
+  const errBefore = errDegToTrackedRadial(station, aircraft, trackedRadialDeg);
+
+  if (Math.abs(rAtObsHeading.cdi) < CDI_NEARLY_CENTERED_EPS) {
+    return -errBefore;
+  }
+
+  const turnSign = rAtObsHeading.cdi < 0 ? -1 : 1;
+  const steerHeading = normalizeHeading(obsN + turnSign * INTERCEPT_NEEDLE_DELTA_DEG);
+  const pAfter = positionAfterFlyingHeadingNm(aircraft, steerHeading, INTERCEPT_NEEDLE_STEP_NM);
+  const errAfter = errDegToTrackedRadial(station, pAfter, trackedRadialDeg);
+  return errBefore - errAfter;
+}
+
+/**
+ * TO/FFROM-failure quiz: which airplane is paired with the deflected needle when both are
+ * first aligned to the OBS lubber heading, then flown a notch toward their own needle direction
+ * toward the graded radial leg (OBS from top lubber if Aircraft A is FROM; reciprocal if TO).
+ *
+ * When the manoeuvre favours neither, falls back to {@link correctAircraftFromGeometry}.
+ */
+export function correctAircraftFromInterceptCue(params: {
+  station: Position;
+  aircraftA: Position;
+  aircraftB: Position;
+  obs: number;
+}): TrainingAircraftId {
+  const { station, aircraftA, aircraftB, obs } = params;
+  const obsN = normalizeHeading(obs);
+
+  const headingFaceObs = obsN;
+
+  const readAobs = computeVorReadout({
+    station,
+    aircraft: aircraftA,
+    heading: headingFaceObs,
+    obs: obsN,
+  });
+  const readBobs = computeVorReadout({
+    station,
+    aircraft: aircraftB,
+    heading: headingFaceObs,
+    obs: obsN,
+  });
+
+  const signCdi = (cdi: number) =>
+    cdi < -CDI_NEARLY_CENTERED_EPS ? -1 : cdi > CDI_NEARLY_CENTERED_EPS ? 1 : 0;
+
+  const sA = signCdi(readAobs.cdi);
+  const sB = signCdi(readBobs.cdi);
+
+  /*
+   * Opposite needle polarity between A vs B usually means mirrored geometry relative to OBS.
+   * A short dead-reckoning “fly toward needle” step is unreliable there; radial alignment to
+   * the graded OBS vs reciprocal branch (derived from Aircraft A's hemisphere) matches
+   * the procedural picture without fighting the cockpit model.
+   */
+  if (sA !== 0 && sB !== 0 && sA !== sB) {
+    return correctAircraftFromGeometry(params);
+  }
+
+  const aToFrom = vorToFromGeometry(readAobs.radial, obsN);
+  const trackedRadial = aToFrom === 'FROM' ? obsN : reciprocalCourse(obsN);
+
+  const scoreA = interceptNeedleCueScore({
+    station,
+    aircraft: aircraftA,
+    obsDeg: obsN,
+    trackedRadialDeg: trackedRadial,
+    headingForObsCoupling: headingFaceObs,
+    obsCourse: obsN,
+  });
+  const scoreB = interceptNeedleCueScore({
+    station,
+    aircraft: aircraftB,
+    obsDeg: obsN,
+    trackedRadialDeg: trackedRadial,
+    headingForObsCoupling: headingFaceObs,
+    obsCourse: obsN,
+  });
+
+  if (scoreA > scoreB + 1e-9) return 'A';
+  if (scoreB > scoreA + 1e-9) return 'B';
+  return correctAircraftFromGeometry(params);
+}
+
 /**
  * Create two aircraft on opposite radials through the station, connected by a
  * conceptual line that passes through the VOR. The student rotates this line
@@ -163,7 +298,7 @@ export function buildToFromFailureTrainingScenario(params: {
     obs,
   });
 
-  const correct = correctAircraftFromGeometry({
+  const correct = correctAircraftFromInterceptCue({
     station,
     aircraftA: aPos,
     aircraftB: bPos,

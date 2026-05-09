@@ -20,7 +20,7 @@ import type { Position, ScenarioId } from './types';
 import {
   buildToFromFailureTrainingScenario,
   computeVorReadout,
-  correctAircraftFromGeometry,
+  correctAircraftFromInterceptCue,
   mirrorThroughStation,
 } from './utils/toFromFailureTraining';
 import inratLogo from './assets/inrat-logo.png';
@@ -310,11 +310,10 @@ export default function App() {
       heading: trainingHeadingB ?? snapshot.obs,
       obs: snapshot.obs,
     });
-    /* Quiz answer always follows Aircraft A instrument logic: use A's FROM/TO side vs OBS
-     * to decide whether graded radial is OBS or reciprocal, then whoever is nearer wins.
-     * Random mode locks positions only—the displayed CDI stays coupled to Aircraft A,
-     * so correctness must stay consistent with that needle (never a blind "synced" lock). */
-    const liveCorrect = correctAircraftFromGeometry({
+    /* Quiz answer: face OBS lubber heading, then a small “fly toward the needle” turn toward
+     * the graded radial (OBS from top if Aircraft A is FROM, reciprocal if TO). Whichever
+     * aircraft benefits more from its own needle-aligned turn wins; tie → geometry fallback. */
+    const liveCorrect = correctAircraftFromInterceptCue({
       station,
       aircraftA: trainingPos.A,
       aircraftB: trainingPos.B,
@@ -506,11 +505,11 @@ export default function App() {
                   )}
 
                   <p className="tf-quiz-exp">
-                    The VOR above shows <strong>Aircraft A only</strong> (fly toward the needle to centre for A).
-                    With the TO/FROM flag failed, pairing that needle with the map matters: Aircraft A&apos;s hemisphere
-                    (brown FROM versus blue TO versus the OBS) decides whether the graded course is{' '}
-                    <strong>R-OBS</strong> out the top lubber or its <strong>reciprocal</strong> inbound. Correct is
-                    whichever aircraft sits closer to <em>that</em> graded radial—not a random “who was synced” guess.
+                    The VOR needle is <strong>Aircraft A&apos;s only</strong>. For the quiz we use the exam setup:
+                    rotate to the OBS heading (under the top lubber), then the way the needle deflects is the way you
+                    would turn to tighten on the course. We pick the aircraft that best matches that manoeuvre toward
+                    either <strong>R-OBS</strong> (top) or its <strong>reciprocal</strong> (bottom) from Aircraft
+                    A&apos;s map hemisphere when the flag is failed.
                   </p>
                   <p className="tf-quiz-exp">
                     <strong>Safety note:</strong> a failed or misleading TO/FROM indication can make you confidently

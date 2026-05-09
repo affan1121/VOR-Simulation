@@ -4,6 +4,7 @@ import {
   buildToFromFailureTrainingScenario,
   computeVorReadout,
   correctAircraftFromGeometry,
+  correctAircraftFromInterceptCue,
   mirrorThroughStation,
   resolveToFromFlagFailedDisplay,
 } from './toFromFailureTraining';
@@ -327,6 +328,29 @@ describe('correctAircraftFromGeometry', () => {
     };
     expect(
       correctAircraftFromGeometry({
+        station,
+        aircraftA: a,
+        aircraftB: b,
+        obs: 140,
+      })
+    ).toBe('A');
+  });
+});
+
+describe('correctAircraftFromInterceptCue', () => {
+  const station = { x: 0, y: 0 };
+
+  it('OBS 140, A R-307, B R-127 ⇒ A (exam: OBS lubber then fly toward needle toward reciprocal)', () => {
+    const a = {
+      x: Math.sin((307 * Math.PI) / 180) * 10,
+      y: Math.cos((307 * Math.PI) / 180) * 10,
+    };
+    const b = {
+      x: Math.sin((127 * Math.PI) / 180) * 10,
+      y: Math.cos((127 * Math.PI) / 180) * 10,
+    };
+    expect(
+      correctAircraftFromInterceptCue({
         station,
         aircraftA: a,
         aircraftB: b,
