@@ -315,5 +315,24 @@ describe('correctAircraftFromGeometry', () => {
       })
     ).toBe('A');
   });
+
+  it('matches reported case: OBS 140, A R-307, B R-127 => A (instrument TO side graded to reciprocal)', () => {
+    const a = {
+      x: Math.sin((307 * Math.PI) / 180) * 10,
+      y: Math.cos((307 * Math.PI) / 180) * 10,
+    };
+    const b = {
+      x: Math.sin((127 * Math.PI) / 180) * 10,
+      y: Math.cos((127 * Math.PI) / 180) * 10,
+    };
+    expect(
+      correctAircraftFromGeometry({
+        station,
+        aircraftA: a,
+        aircraftB: b,
+        obs: 140,
+      })
+    ).toBe('A');
+  });
 });
 

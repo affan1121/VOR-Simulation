@@ -69,7 +69,6 @@ export default function App() {
    * snap A/B back onto R-OBS / R-(OBS+180); the whole point of the random quiz is
    * to study the fixed geometry without the layout being re-snapped. */
   const [tfRandomMode, setTfRandomMode] = useState(false);
-  const [tfRandomSynced, setTfRandomSynced] = useState<'A' | 'B' | null>(null);
 
   /** Last VOR position used for training A/B — re-seed when the fix moves (new scenario). */
   const trainingStationRef = useRef<{ x: number; y: number } | null>(null);
@@ -147,7 +146,6 @@ export default function App() {
       setTrainingPos(null);
       setTrainingHeadingA(null);
       setTrainingHeadingB(null);
-      setTfRandomSynced(null);
       return;
     }
 
@@ -291,7 +289,6 @@ export default function App() {
     };
     trainingObsRef.current = newObs;
     setTfRandomMode(true);
-    setTfRandomSynced(syncWithA ? 'A' : 'B');
     setObs(newObs);
     setTrainingPos({ A: aPos, B: bPos });
     setTrainingHeadingA(radA);
@@ -313,17 +310,16 @@ export default function App() {
       heading: trainingHeadingB ?? snapshot.obs,
       obs: snapshot.obs,
     });
-    /* Always grade from live geometry using the current OBS. In canonical mode, OBS
-     * changes reseed the layout (A on R-OBS). In random mode, OBS changes keep aircraft
-     * fixed so the correct answer can legitimately flip. */
-    const liveCorrect = tfRandomMode && tfRandomSynced
-      ? tfRandomSynced
-      : correctAircraftFromGeometry({
-          station,
-          aircraftA: trainingPos.A,
-          aircraftB: trainingPos.B,
-          obs: snapshot.obs,
-        });
+    /* Quiz answer always follows Aircraft A instrument logic: use A's FROM/TO side vs OBS
+     * to decide whether graded radial is OBS or reciprocal, then whoever is nearer wins.
+     * Random mode locks positions only—the displayed CDI stays coupled to Aircraft A,
+     * so correctness must stay consistent with that needle (never a blind "synced" lock). */
+    const liveCorrect = correctAircraftFromGeometry({
+      station,
+      aircraftA: trainingPos.A,
+      aircraftB: trainingPos.B,
+      obs: snapshot.obs,
+    });
     return { obs: snapshot.obs, aircraftA: a, aircraftB: b, correct: liveCorrect };
   }, [
     failToFromFlag,
@@ -334,7 +330,6 @@ export default function App() {
     trainingHeadingA,
     trainingHeadingB,
     tfRandomMode,
-    tfRandomSynced,
   ]);
 
   return (
@@ -402,7 +397,6 @@ export default function App() {
                 setFailToFromFlag(e.target.checked);
                 setToFromQuizChoice(null);
                 setTfRandomMode(false);
-                setTfRandomSynced(null);
                 if (!e.target.checked) {
                   setTrainingHeadingA(null);
                   setTrainingHeadingB(null);
@@ -440,7 +434,6 @@ export default function App() {
                   className="btn sm"
                   onClick={() => {
                     setTfRandomMode(false);
-                    setTfRandomSynced(null);
                   }}
                   title="Return OBS-change behaviour to the canonical 'A on R-OBS' reseed"
                 >
@@ -513,12 +506,11 @@ export default function App() {
                   )}
 
                   <p className="tf-quiz-exp">
-                    <strong>CDI direction does not decide it.</strong> The VOR above is <strong>Aircraft A’s</strong>
-                    instrument. CDI deflection only tells you which side of the OBS course <em>line</em> A is on
-                    (needle right ⇒ course is to A’s right). It does <em>not</em> tell you which hemisphere of the
-                    station A is in — that is exactly the information the failed flag would have provided. A right
-                    deflection is consistent with A being on R-OBS <em>or</em> on the reciprocal; only the map (and
-                    the brown FROM / blue TO shading) settles it.
+                    The VOR above shows <strong>Aircraft A only</strong> (fly toward the needle to centre for A).
+                    With the TO/FROM flag failed, pairing that needle with the map matters: Aircraft A&apos;s hemisphere
+                    (brown FROM versus blue TO versus the OBS) decides whether the graded course is{' '}
+                    <strong>R-OBS</strong> out the top lubber or its <strong>reciprocal</strong> inbound. Correct is
+                    whichever aircraft sits closer to <em>that</em> graded radial—not a random “who was synced” guess.
                   </p>
                   <p className="tf-quiz-exp">
                     <strong>Safety note:</strong> a failed or misleading TO/FROM indication can make you confidently
