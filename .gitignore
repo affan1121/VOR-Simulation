@@ -1,4 +1,6 @@
 node_modules
 dist
+vor-simulator-static
+vor-simulator-static.zip
 *.local
 .DS_Store
