@@ -525,21 +525,6 @@ export default function App() {
                   )}
 
                   <p className="tf-quiz-exp">
-                    With both aircraft on the perpendicular candidate radials, set each heading to the{' '}
-                    <strong>OBS lubber</strong> value (same as the top of the course card). The CDI in this panel
-                    matches the <strong>graded aircraft</strong> (A or B). Use needle left/right and position
-                    awareness per the OFF-flag drill: fly toward the needle from that heading to see which aircraft
-                    is on the radial that matches the scenario.
-                  </p>
-                  {tfLockedGradedAircraft && (
-                    <p className="tf-quiz-exp">
-                      The panel CDI is tied to <strong>Aircraft {tfLockedGradedAircraft}</strong> for this layout (set
-                      when you entered fail mode or used Random scenario). It updates as you move that aircraft or
-                      change OBS, so deflection always reflects that plane relative to the selected course—not the other
-                      label.
-                    </p>
-                  )}
-                  <p className="tf-quiz-exp">
                     <strong>Safety note:</strong> a failed or misleading TO/FROM indication can make you confidently
                     track the wrong leg of the same course line. The CDI still gives correct left/right guidance for
                     the aircraft the instrument is coupled to, but it must be paired with where <em>that</em> aircraft
