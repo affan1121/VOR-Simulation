@@ -37,16 +37,8 @@ export default function App() {
     paused,
     setPaused,
     setHeading,
-    setAirspeed,
-    setWindFrom,
-    setWindSpeed,
     setObs,
     heading,
-    airspeed,
-    windFrom,
-    windSpeed,
-    directGroundSpeedMode,
-    setDirectGroundSpeedMode,
     directGroundSpeed,
     setDirectGroundSpeed,
     moveAircraftTo,
@@ -117,8 +109,7 @@ export default function App() {
 
   const applyGroundSpeedTyped = useCallback((kt: number) => {
     setDirectGroundSpeed(kt);
-    setDirectGroundSpeedMode(true);
-  }, []);
+  }, [setDirectGroundSpeed]);
 
   const onRandom = () => {
     const ch = generateRandomChallenge();
@@ -375,7 +366,7 @@ export default function App() {
           <select
             value={scenarioId}
             onChange={(e) => applyScenario(e.target.value as ScenarioId)}
-            title="Load preset aircraft position and wind"
+            title="Load preset aircraft position and speed"
           >
             {SCENARIOS.map((s) => (
               <option key={s.id} value={s.id}>
@@ -644,7 +635,7 @@ export default function App() {
             <span title="Cross-track error">XTK {snapshot.courseErrorDeg.toFixed(1)}°</span>
             {interceptMapActive && (
               <span
-                title="Suggested magnetic heading to intercept the target radial set in the Intercept panel (wind affects track)"
+                title="Suggested magnetic heading to intercept the target radial set in the Intercept panel (track follows heading in this trainer)"
                 className="status-int-hdg"
               >
                 INT HDG {formatMagneticThreeDigit360(interceptRec.heading)}°
@@ -658,18 +649,6 @@ export default function App() {
             simRunning={!paused}
             heading={heading}
             onHeading={setHeading}
-            airspeed={airspeed}
-            onAirspeed={setAirspeed}
-            windFrom={windFrom}
-            onWindFrom={setWindFrom}
-            windSpeed={windSpeed}
-            onWindSpeed={setWindSpeed}
-            directGroundSpeedMode={directGroundSpeedMode}
-            currentGroundSpeed={snapshot.groundSpeed}
-            onDirectGroundSpeedMode={setDirectGroundSpeedMode}
-            onSeedGroundSpeedFromSnapshot={() =>
-              setDirectGroundSpeed(Math.round(snapshot.groundSpeed))
-            }
             applyGroundSpeedTyped={applyGroundSpeedTyped}
             directGroundSpeed={directGroundSpeed}
             onDirectGroundSpeed={setDirectGroundSpeed}
@@ -694,7 +673,7 @@ export default function App() {
 
       <footer className="foot foot-simple">
         <p>
-          CDI full scale is 10° off course; four deviation dots each side at 4°, 6°, 8°, and 10° (2° dot omitted).
+          CDI full scale is 10° off course; five deviation dots each side at 2°, 4°, 6°, 8°, and 10° (2° per dot).
           Near the station,
           behavior is a training approximation only.
         </p>

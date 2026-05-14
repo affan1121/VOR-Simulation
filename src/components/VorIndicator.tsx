@@ -8,6 +8,7 @@ import {
   maxDistanceNmAlongRadialInExtents,
   normalizeHeading,
   VOR_CDI_DOT_STEP_DEG,
+  VOR_CDI_DOTS_PER_SIDE,
   VOR_CDI_FULL_SCALE_DEG,
 } from '../utils/vorMath';
 
@@ -51,12 +52,11 @@ function ringPoint(cx: number, cy: number, bearingDeg: number, r: number): [numb
 const CDI_PX_FULL = 52;
 const CDI_FULL_SCALE_DEG = VOR_CDI_FULL_SCALE_DEG;
 const CDI_DOT_STEP_DEG = VOR_CDI_DOT_STEP_DEG;
-/** Half-scale lateral px — aligns TO/FR window at mid-scale. */
+/** Half-scale lateral px — aligns TO/FR window at mid-scale (5°). */
 const CDI_HALF_DOT_PX = (CDI_PX_FULL * (CDI_FULL_SCALE_DEG / 2)) / CDI_FULL_SCALE_DEG;
-/** Four dots each side at 4°, 6°, 8°, 10° — inner 2° dot omitted; spacing still 2° to full scale. */
-const CDI_DOT_COUNT_PER_SIDE = CDI_FULL_SCALE_DEG / CDI_DOT_STEP_DEG - 1;
-const CDI_DOT_OFFSETS_PX = Array.from({ length: CDI_DOT_COUNT_PER_SIDE }, (_, i) =>
-  (((i + 2) * CDI_DOT_STEP_DEG) / CDI_FULL_SCALE_DEG) * CDI_PX_FULL
+/** Five dots each side at 2°, 4°, 6°, 8°, and 10° off course (2° per dot to full scale). */
+const CDI_DOT_OFFSETS_PX = Array.from({ length: VOR_CDI_DOTS_PER_SIDE }, (_, i) =>
+  (((i + 1) * CDI_DOT_STEP_DEG) / CDI_FULL_SCALE_DEG) * CDI_PX_FULL
 );
 /** Outer ends of radial ticks — inset so labels sit clearly outside tick lines. */
 const TICK_OUTER_R = 79;
@@ -154,8 +154,8 @@ function ObsKnob({ obs, onObsChange }: { obs: number; onObsChange: (v: number) =
 
 /**
  * Fixed lubber at top; the whole compass card (ticks + labels) rotates with OBS so the selected
- * degree aligns under the lubber and matches the OBS readout. CDI needle + four deviation dots
- * each side (4°–10° by 2°, inner 2° omitted).
+ * degree aligns under the lubber and matches the OBS readout. CDI needle + five deviation dots
+ * each side (2°, 4°, 6°, 8°, 10° off course; 2° per dot).
  */
 export function VorIndicator({
   title,
@@ -279,7 +279,7 @@ export function VorIndicator({
         />
         <line x1="110" y1="4" x2="110" y2="10" stroke="#fff9e6" strokeWidth="1.5" strokeLinecap="round" opacity={0.9} />
 
-        {/* Fixed lateral deviation dots — four per side (quarter-scale steps to full deflection). */}
+        {/* Fixed lateral deviation dots — five per side (2° steps to ±10° full scale). */}
         <g aria-hidden className="vor-cdi-scale">
           {CDI_DOT_OFFSETS_PX.flatMap((off) => [-off, off]).map((dx) => (
             <circle
@@ -363,7 +363,8 @@ export function VorIndicator({
           </g>
         )}
 
-        <circle cx="110" cy="110" r="8" fill="#1c2533" stroke="#5c6e85" strokeWidth="2" />
+        {/* Center hub — smaller than innermost dots (2°) so it does not meet the deviation marks */}
+        <circle cx="110" cy="110" r="5.5" fill="#1c2533" stroke="#5c6e85" strokeWidth="1.8" />
 
         {inCone && navValid && (
           <text x="110" y="206" textAnchor="middle" fill="#ff9f43" fontSize="10" fontFamily="Plus Jakarta Sans, sans-serif">

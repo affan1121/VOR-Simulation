@@ -6,20 +6,7 @@ type Props = {
   onReset: () => void;
   heading: number;
   onHeading: (h: number) => void;
-  airspeed: number;
-  onAirspeed: (v: number) => void;
-  windFrom: number;
-  onWindFrom: (w: number) => void;
-  windSpeed: number;
-  onWindSpeed: (w: number) => void;
-  /** Student mode: move using heading + ground speed (wind ignored for motion). */
-  directGroundSpeedMode: boolean;
-  onDirectGroundSpeedMode: (v: boolean) => void;
-  /** Live GS from physics (wind mode) or typed value (student mode). */
-  currentGroundSpeed: number;
-  /** When enabling student mode via checkbox, seed GS from current sim GS. */
-  onSeedGroundSpeedFromSnapshot: () => void;
-  /** Typing GS enables student mode and sets speed in one step. */
+  /** Typing GS sets speed in one step (clamped). */
   applyGroundSpeedTyped: (kt: number) => void;
   directGroundSpeed: number;
   onDirectGroundSpeed: (kt: number) => void;
@@ -32,16 +19,6 @@ export function Controls({
   onReset,
   heading,
   onHeading,
-  airspeed,
-  onAirspeed,
-  windFrom,
-  onWindFrom,
-  windSpeed,
-  onWindSpeed,
-  directGroundSpeedMode,
-  onDirectGroundSpeedMode,
-  currentGroundSpeed,
-  onSeedGroundSpeedFromSnapshot,
   applyGroundSpeedTyped,
   directGroundSpeed,
   onDirectGroundSpeed,
@@ -50,8 +27,6 @@ export function Controls({
     Math.max(25, Math.min(280, Math.round(Number.isFinite(v) ? v : directGroundSpeed)));
 
   const normalizeHeading = (v: number) => (((v % 360) + 360) % 360);
-
-  const gsDisplay = directGroundSpeedMode ? directGroundSpeed : Math.round(currentGroundSpeed);
 
   return (
     <div className="controls card">
@@ -66,22 +41,6 @@ export function Controls({
           Reset
         </button>
       </div>
-
-      <label className="ctl ctl-checkbox">
-        <span title="Set heading and ground speed directly; wind does not change track">
-          Student: heading + GS
-        </span>
-        <input
-          type="checkbox"
-          checked={directGroundSpeedMode}
-          onChange={(e) => {
-            const on = e.target.checked;
-            if (on) onSeedGroundSpeedFromSnapshot();
-            onDirectGroundSpeedMode(on);
-          }}
-          className="ctl-check"
-        />
-      </label>
 
       <label className="ctl ctl-heading-row">
         <span title="Magnetic heading — type or use slider">Heading (°)</span>
@@ -125,103 +84,29 @@ export function Controls({
       </label>
 
       <label className="ctl ctl-gs-row">
-        <span title="Type a value to jump into student GS mode, or edit while in student mode">
-          Ground speed (kt)
-        </span>
+        <span title="Ground speed along heading">Ground speed (kt)</span>
         <input
           type="number"
           min={25}
           max={280}
-          value={gsDisplay}
+          value={directGroundSpeed}
           onChange={(e) => applyGroundSpeedTyped(clampGs(Number(e.target.value)))}
           className="num wide"
           aria-label="Ground speed knots"
         />
         <div className="ctl-gs-extra">
-          {directGroundSpeedMode ? (
-            <>
-              <input
-                type="range"
-                min={40}
-                max={240}
-                value={directGroundSpeed}
-                onChange={(e) => onDirectGroundSpeed(clampGs(Number(e.target.value)))}
-                className="ctl-gs-range"
-                aria-label="Ground speed slider"
-              />
-              <span className="ctl-val">{directGroundSpeed}</span>
-            </>
-          ) : (
-            <span className="ctl-hint">Wind mode — type GS to switch to student mode</span>
-          )}
+          <input
+            type="range"
+            min={40}
+            max={240}
+            value={directGroundSpeed}
+            onChange={(e) => onDirectGroundSpeed(clampGs(Number(e.target.value)))}
+            className="ctl-gs-range"
+            aria-label="Ground speed slider"
+          />
+          <span className="ctl-val">{directGroundSpeed}</span>
         </div>
       </label>
-
-      {directGroundSpeedMode ? (
-        <p className="ctl-note">Wind controls hidden — using heading + GS for motion.</p>
-      ) : (
-        <>
-          <label className="ctl">
-            <span title="True airspeed">Airspeed (kt)</span>
-            <input
-              type="range"
-              min={60}
-              max={180}
-              value={airspeed}
-              onChange={(e) => onAirspeed(Number(e.target.value))}
-            />
-            <input
-              type="number"
-              min={40}
-              max={250}
-              value={airspeed}
-              onChange={(e) => onAirspeed(Math.max(40, Math.min(250, Number(e.target.value) || airspeed)))}
-              className="num wide"
-              aria-label="Airspeed knots"
-            />
-          </label>
-
-          <label className="ctl">
-            <span title="Wind FROM">Wind from (°)</span>
-            <input
-              type="range"
-              min={0}
-              max={359}
-              value={Math.round(windFrom)}
-              onChange={(e) => onWindFrom(Number(e.target.value))}
-            />
-            <input
-              type="number"
-              min={0}
-              max={359}
-              value={Math.round(windFrom)}
-              onChange={(e) => onWindFrom(Number(e.target.value) % 360)}
-              className="num wide"
-              aria-label="Wind from degrees"
-            />
-          </label>
-
-          <label className="ctl">
-            <span>Wind speed (kt)</span>
-            <input
-              type="range"
-              min={0}
-              max={60}
-              value={windSpeed}
-              onChange={(e) => onWindSpeed(Number(e.target.value))}
-            />
-            <input
-              type="number"
-              min={0}
-              max={80}
-              value={windSpeed}
-              onChange={(e) => onWindSpeed(Math.max(0, Math.min(80, Number(e.target.value) || 0)))}
-              className="num wide"
-              aria-label="Wind speed knots"
-            />
-          </label>
-        </>
-      )}
     </div>
   );
 }

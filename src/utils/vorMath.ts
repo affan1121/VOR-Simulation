@@ -20,6 +20,9 @@ export const VOR_CDI_FULL_SCALE_DEG = 10;
 /** Lateral deviation-dot spacing on the CDI face (° between marks from centerline). */
 export const VOR_CDI_DOT_STEP_DEG = 2;
 
+/** Dots from centerline to full-scale each side (10° FSD ÷ 2° → five marks at 2°, 4°, …, 10°). */
+export const VOR_CDI_DOTS_PER_SIDE = VOR_CDI_FULL_SCALE_DEG / VOR_CDI_DOT_STEP_DEG;
+
 /** Normalize any heading/course to [0, 360). */
 export function normalizeHeading(deg: number): number {
   const x = deg % 360;

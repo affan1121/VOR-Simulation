@@ -84,7 +84,7 @@ export function useSimulation() {
   const simTimeRef = useRef(0);
 
   /** When true, aircraft moves at `directGroundSpeed` along heading (no wind vector). */
-  const [directGroundSpeedMode, setDirectGroundSpeedMode] = useState(false);
+  const [directGroundSpeedMode, setDirectGroundSpeedMode] = useState(true);
   const [directGroundSpeed, setDirectGroundSpeed] = useState(120);
 
   /** Latest flight controls — read inside the interval so we don’t restart the timer every slider move. */
@@ -198,14 +198,19 @@ export function useSimulation() {
       passageInsideRef.current = false;
       oscillationPhaseRef.current = 0;
       trailRef.current = [{ ...p.aircraft }];
+      const gs = Math.max(25, Math.min(280, Math.round(p.airspeed)));
+      setDirectGroundSpeedMode(true);
+      setDirectGroundSpeed(gs);
+      directGsModeRef.current = true;
+      directGsRef.current = gs;
     },
     []
   );
 
   const reset = useCallback(() => {
-    setDirectGroundSpeedMode(false);
+    setDirectGroundSpeedMode(true);
     setDirectGroundSpeed(120);
-    directGsModeRef.current = false;
+    directGsModeRef.current = true;
     directGsRef.current = 120;
     loadInitial({
       aircraft: { x: 0, y: 8 },

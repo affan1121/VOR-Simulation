@@ -146,8 +146,8 @@ export function InterceptPanel({
           </p>
           <p className="intercept-heading-turn fine">{explainInterceptTurn(snapshot.heading, rec.heading)}</p>
           <p className="intercept-wind-note">
-            Wind changes your ground <strong>track</strong> versus heading — use the map and CDI together, not heading
-            alone, to judge when you&apos;ve captured the radial.
+            In this trainer, <strong>track matches heading</strong> at your set ground speed — use the map and CDI
+            together to judge when you&apos;ve captured the radial.
           </p>
         </div>
       ) : null}

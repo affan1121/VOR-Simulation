@@ -1,5 +1,5 @@
 import type { VORReadout } from '../utils/toFromFailureTraining';
-import { normalizeHeading, VOR_CDI_DOT_STEP_DEG, VOR_CDI_FULL_SCALE_DEG } from '../utils/vorMath';
+import { normalizeHeading, VOR_CDI_DOTS_PER_SIDE } from '../utils/vorMath';
 
 type Props = {
   title: string;
@@ -8,7 +8,7 @@ type Props = {
   failToFromFlag: boolean;
 };
 
-const DOT_COUNT_PER_SIDE = VOR_CDI_FULL_SCALE_DEG / VOR_CDI_DOT_STEP_DEG;
+const DOT_COUNT_PER_SIDE = VOR_CDI_DOTS_PER_SIDE;
 const CDI_PX_FULL = 18;
 const DOT_OFFSETS = Array.from({ length: DOT_COUNT_PER_SIDE }, (_, i) => ((i + 1) / DOT_COUNT_PER_SIDE) * CDI_PX_FULL);
 

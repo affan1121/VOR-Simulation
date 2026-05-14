@@ -44,7 +44,7 @@ export function generateRandomChallenge(): RandomChallenge {
     mode === 'INBOUND'
       ? `For an **inbound** intercept on the **${target}°** radial, you eventually want to fly heading **${Math.round(inboundCrs)}°** toward the station once established on that radial (reciprocal of the radial).`
       : `For **outbound** tracking on the **${target}°** radial, established heading is **${target}°** away from the station.`,
-    `Use the intercept planner with target radial ${target}° and mode ${mode}. Wind is from ${windFrom}° at ${windSpeed} kt — remember ground track ≠ heading.`,
+    `Use the intercept planner with target radial ${target}° and mode ${mode}. Motion follows heading and ground speed in this trainer.`,
   ].join(' ');
 
   return {
