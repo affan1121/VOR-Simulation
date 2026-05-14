@@ -64,13 +64,9 @@ export type ToFromFailureTrainingScenario = {
   obs: number;
   aircraftA: VORReadout;
   aircraftB: VORReadout;
-  /**
-   * Correct aircraft for: "Which aircraft is on the correct side to track the selected course inbound?"
-   *
-   * In this training mode we define "correct" as the aircraft closest to the **reciprocal
-   * radial** of the selected OBS (the inbound/TO side when tracking the selected course).
-   */
   correct: TrainingAircraftId;
+  /** CDI / needle shown in the panel — always the graded (correct) aircraft for OFF-flag drills. */
+  vorInstrument: VORReadout;
 };
 
 function pointOnRadial(station: Position, radialDeg: number, nmOut: number): Position {
@@ -223,13 +219,13 @@ export function correctAircraftFromInterceptCue(params: {
   const sB = signCdi(readBobs.cdi);
 
   /*
-   * Opposite needle polarity between A vs B usually means mirrored geometry relative to OBS.
-   * A short dead-reckoning “fly toward needle” step is unreliable there; radial alignment to
-   * the graded OBS vs reciprocal branch (derived from Aircraft A's hemisphere) matches
-   * the procedural picture without fighting the cockpit model.
+   * Opposite needle polarity: both aircraft on the perpendicular “green line” candidates
+   * (INRAT OFF-flag drill) with **the same OBS lubber heading**. The CDI then identifies which
+   * radial you are on: needle left ⇒ the aircraft whose CDI is left is correct; needle right ⇒
+   * the aircraft whose CDI is right (see vor-off-indications.pdf).
    */
   if (sA !== 0 && sB !== 0 && sA !== sB) {
-    return correctAircraftFromGeometry(params);
+    return readAobs.cdi < readBobs.cdi ? 'A' : 'B';
   }
 
   const aToFrom = vorToFromGeometry(readAobs.radial, obsN);
@@ -304,8 +300,9 @@ export function buildToFromFailureTrainingScenario(params: {
     aircraftB: bPos,
     obs,
   });
+  const vorInstrument = correct === 'A' ? aircraftA : aircraftB;
 
-  return { obs, aircraftA, aircraftB, correct };
+  return { obs, aircraftA, aircraftB, correct, vorInstrument };
 }
 
 export function resolveToFromFlagFailedDisplay(params: {

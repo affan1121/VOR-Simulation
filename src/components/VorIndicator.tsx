@@ -153,9 +153,9 @@ function ObsKnob({ obs, onObsChange }: { obs: number; onObsChange: (v: number) =
 }
 
 /**
- * Fixed compass rose: tick lines stay on the bezel; only the printed numbers (and cardinals)
- * move with OBS so the selected course sits under the top lubber. CDI needle + four deviation
- * dots each side (4°–10° by 2°, inner 2° omitted).
+ * Fixed lubber at top; the whole compass card (ticks + labels) rotates with OBS so the selected
+ * degree aligns under the lubber and matches the OBS readout. CDI needle + four deviation dots
+ * each side (4°–10° by 2°, inner 2° omitted).
  */
 export function VorIndicator({
   title,
@@ -196,14 +196,16 @@ export function VorIndicator({
       : { boxFill: '#221711', boxStroke: '#b67a52', labelFill: '#ffd6b8' as const };
 
   const ticks: ReactNode[] = [];
+  const obsN = normalizeHeading(obs);
   for (let t = 0; t < 360; t += 5) {
     const isTen = t % 10 === 0;
     const isCard = t % 90 === 0;
     const len = isTen ? (isCard ? 15 : 12) : 5;
     const rOuter = TICK_OUTER_R;
     const rInner = rOuter - len;
-    const [x1, y1] = ringPoint(cx, cy, t, rInner);
-    const [x2, y2] = ringPoint(cx, cy, t, rOuter);
+    const faceBearing = normalizeHeading(t - obsN);
+    const [x1, y1] = ringPoint(cx, cy, faceBearing, rInner);
+    const [x2, y2] = ringPoint(cx, cy, faceBearing, rOuter);
     ticks.push(
       <line
         key={`tk-${t}`}
@@ -229,7 +231,7 @@ export function VorIndicator({
       else if (t === 180) text = 'S';
       else if (t === 270) text = 'W';
       else text = t.toString().padStart(3, '0');
-      const faceBearing = normalizeHeading(t - obs);
+      const faceBearing = normalizeHeading(t - obsN);
       const [wx, wy] = ringPoint(cx, cy, faceBearing, LABEL_RING_R);
       const isCard = t % 90 === 0;
       labels.push(

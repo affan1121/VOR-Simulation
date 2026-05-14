@@ -340,6 +340,44 @@ describe('correctAircraftFromGeometry', () => {
 describe('correctAircraftFromInterceptCue', () => {
   const station = { x: 0, y: 0 };
 
+  it('INRAT OFF-flag: OBS 0, A on R-090 B on R-270, both heading 0 ⇒ A (needle left / CDI_A < CDI_B)', () => {
+    const a = {
+      x: Math.sin((90 * Math.PI) / 180) * 10,
+      y: Math.cos((90 * Math.PI) / 180) * 10,
+    };
+    const b = {
+      x: Math.sin((270 * Math.PI) / 180) * 10,
+      y: Math.cos((270 * Math.PI) / 180) * 10,
+    };
+    expect(
+      correctAircraftFromInterceptCue({
+        station,
+        aircraftA: a,
+        aircraftB: b,
+        obs: 0,
+      })
+    ).toBe('A');
+  });
+
+  it('INRAT OFF-flag: same geometry but A↔B labels ⇒ B when A is on R-270 and B on R-090', () => {
+    const a = {
+      x: Math.sin((270 * Math.PI) / 180) * 10,
+      y: Math.cos((270 * Math.PI) / 180) * 10,
+    };
+    const b = {
+      x: Math.sin((90 * Math.PI) / 180) * 10,
+      y: Math.cos((90 * Math.PI) / 180) * 10,
+    };
+    expect(
+      correctAircraftFromInterceptCue({
+        station,
+        aircraftA: a,
+        aircraftB: b,
+        obs: 0,
+      })
+    ).toBe('B');
+  });
+
   it('OBS 140, A R-307, B R-127 ⇒ A (exam: OBS lubber then fly toward needle toward reciprocal)', () => {
     const a = {
       x: Math.sin((307 * Math.PI) / 180) * 10,

@@ -65,17 +65,17 @@ export default function App() {
   const [trainingPos, setTrainingPos] = useState<{ A: Position; B: Position } | null>(null);
   const [trainingHeadingA, setTrainingHeadingA] = useState<number | null>(null);
   const [trainingHeadingB, setTrainingHeadingB] = useState<number | null>(null);
-  /** When the student loaded a randomized TO/FROM scenario, OBS changes must NOT
-   * snap A/B back onto R-OBS / R-(OBS+180); the whole point of the random quiz is
-   * to study the fixed geometry without the layout being re-snapped. */
+  /** Student used "Random scenario"; used for UI hints only (layout is never re-snapped on OBS). */
   const [tfRandomMode, setTfRandomMode] = useState(false);
+  /**
+   * Aircraft (A or B) whose receiver drives the CDI + quiz. Set when the training pair is seeded
+   * (enter fail / station move) or when Random scenario rolls; cleared when Fail TO/FROM is off.
+   * Persists through Exit random and drags so the needle tracks that plane’s position vs OBS.
+   */
+  const [tfLockedGradedAircraft, setTfLockedGradedAircraft] = useState<'A' | 'B' | null>(null);
 
   /** Last VOR position used for training A/B — re-seed when the fix moves (new scenario). */
   const trainingStationRef = useRef<{ x: number; y: number } | null>(null);
-  /** Last OBS used for training A/B — re-seed when the student picks a new selected course
-   * so A always starts on R-OBS and B on R-(OBS+180) for the new course (matches the
-   * canonical "two aircraft on opposite radials of the selected course" teaching layout). */
-  const trainingObsRef = useRef<number | null>(null);
   /** True while TO/FROM training mode has been entered — used to avoid re-seeding spuriously. */
   const wasTrainingModeRef = useRef(false);
 
@@ -128,6 +128,7 @@ export default function App() {
     setScenarioId('free');
   };
 
+  /** Snapshot layout only when entering training or the fix moves — not when OBS edits (radials stay put). */
   const tfSeed = useMemo(() => {
     if (!failToFromFlag) return null;
     return buildToFromFailureTrainingScenario({
@@ -136,16 +137,17 @@ export default function App() {
       heading: snapshot.obs,
       dmeNm: 10,
     });
-  }, [failToFromFlag, station, snapshot.obs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot.obs only sampled when enabling training or the fix moves (not each OBS tweak)
+  }, [failToFromFlag, station]);
 
   useEffect(() => {
     if (!failToFromFlag || !tfSeed) {
       wasTrainingModeRef.current = false;
       trainingStationRef.current = null;
-      trainingObsRef.current = null;
       setTrainingPos(null);
       setTrainingHeadingA(null);
       setTrainingHeadingB(null);
+      setTfLockedGradedAircraft(null);
       return;
     }
 
@@ -158,19 +160,8 @@ export default function App() {
       prevFix == null || prevFix.x !== st.x || prevFix.y !== st.y;
     trainingStationRef.current = { x: st.x, y: st.y };
 
-    const prevObs = trainingObsRef.current;
-    const obsChanged = prevObs == null || prevObs !== snapshot.obs;
-    trainingObsRef.current = snapshot.obs;
-
-    /* Reseed positions for "new scenario" events — first entry to the mode or
-     * a station move. OBS changes also reseed for the *canonical* teaching layout
-     * (A on R-OBS, B on R-(OBS+180)), but **not** when the student is in random-quiz
-   * mode: there the aircraft must stay fixed while OBS varies so the quiz answer
-   * can flip against the fixed geometry. Drag-induced renders are preserved in either case. */
-    const shouldReseedFromScenario =
-      enteringTraining ||
-      stationChanged ||
-      (obsChanged && !tfRandomMode);
+    /* Reseed only on first enter or station move — OBS changes leave A/B geography fixed (real-world behaviour). */
+    const shouldReseedFromScenario = enteringTraining || stationChanged;
 
     setTrainingPos((prev) => {
       if (!shouldReseedFromScenario && prev) return prev;
@@ -183,9 +174,21 @@ export default function App() {
       enteringTraining || stationChanged || prev == null ? snapshot.obs : prev
     );
     setTrainingHeadingB((prev) =>
-      enteringTraining || stationChanged || prev == null ? 180 : prev
+      enteringTraining || stationChanged || prev == null ? snapshot.obs : prev
     );
-  }, [failToFromFlag, tfSeed, station, snapshot.obs, tfRandomMode]);
+    if (shouldReseedFromScenario) {
+      setTfLockedGradedAircraft(
+        correctAircraftFromInterceptCue({
+          station,
+          aircraftA: tfSeed.aircraftA.aircraft,
+          aircraftB: tfSeed.aircraftB.aircraft,
+          obs: tfSeed.obs,
+        })
+      );
+    }
+    // snapshot.obs: only read when reseeding headings (enter / station); omitting avoids rerunning on every OBS tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [failToFromFlag, tfSeed, station]);
 
   /**
    * Drag handler for training aircraft. The pair is constrained to a single line
@@ -264,11 +267,6 @@ export default function App() {
    *  - Randomly sync either Aircraft A or B to R-OBS, with the other on the opposite radial,
    *    preserving the "two aircraft on opposite radials, line through the station" rule.
    *    This ensures random quizzes produce both A-correct and B-correct situations.
-   *
-   * Activates `tfRandomMode` so subsequent OBS changes do **not** reseed the layout —
-   * the student is supposed to vary OBS against fixed aircraft and see the correct
-   * answer update from live geometry. We also write the new OBS into `trainingObsRef`
-   * to suppress the immediate post-click reseed.
    */
   const onRandomTfScenario = useCallback(() => {
     const newObs = Math.floor(Math.random() * 360);
@@ -287,12 +285,20 @@ export default function App() {
       x: station.x + Math.sin(θB) * distB,
       y: station.y + Math.cos(θB) * distB,
     };
-    trainingObsRef.current = newObs;
+    const obsN = normalizeHeading(newObs);
+    const graded = correctAircraftFromInterceptCue({
+      station,
+      aircraftA: aPos,
+      aircraftB: bPos,
+      obs: obsN,
+    });
+    setTfLockedGradedAircraft(graded);
     setTfRandomMode(true);
     setObs(newObs);
     setTrainingPos({ A: aPos, B: bPos });
-    setTrainingHeadingA(radA);
-    setTrainingHeadingB(radB);
+    const hdgObs = obsN;
+    setTrainingHeadingA(hdgObs);
+    setTrainingHeadingB(hdgObs);
     setToFromQuizChoice(null);
   }, [station, setObs]);
 
@@ -310,16 +316,22 @@ export default function App() {
       heading: trainingHeadingB ?? snapshot.obs,
       obs: snapshot.obs,
     });
-    /* Quiz answer: face OBS lubber heading, then a small “fly toward the needle” turn toward
-     * the graded radial (OBS from top if Aircraft A is FROM, reciprocal if TO). Whichever
-     * aircraft benefits more from its own needle-aligned turn wins; tie → geometry fallback. */
+    /* CDI + quiz: locked aircraft from seed / random roll; readouts a,b still update every frame from positions. */
     const liveCorrect = correctAircraftFromInterceptCue({
       station,
       aircraftA: trainingPos.A,
       aircraftB: trainingPos.B,
       obs: snapshot.obs,
     });
-    return { obs: snapshot.obs, aircraftA: a, aircraftB: b, correct: liveCorrect };
+    const correct = tfLockedGradedAircraft ?? liveCorrect;
+    const vorInstrument = correct === 'A' ? a : b;
+    return {
+      obs: snapshot.obs,
+      aircraftA: a,
+      aircraftB: b,
+      correct,
+      vorInstrument,
+    };
   }, [
     failToFromFlag,
     tfSeed,
@@ -328,8 +340,10 @@ export default function App() {
     snapshot.obs,
     trainingHeadingA,
     trainingHeadingB,
-    tfRandomMode,
+    tfLockedGradedAircraft,
   ]);
+
+  const tfVorReadout = failToFromFlag && tfTraining ? tfTraining.vorInstrument : null;
 
   return (
     <div className="app">
@@ -399,6 +413,7 @@ export default function App() {
                 setFailToFromFlag(e.target.checked);
                 setToFromQuizChoice(null);
                 setTfRandomMode(false);
+                setTfLockedGradedAircraft(null);
                 if (!e.target.checked) {
                   setTrainingHeadingA(null);
                   setTrainingHeadingB(null);
@@ -428,8 +443,9 @@ export default function App() {
             {tfRandomMode ? (
               <>
                 <span className="tf-fail-actions-hint tf-fail-actions-hint-active">
-                  Random quiz active — changing OBS will not move the aircraft. Vary OBS to watch the
-                  correct answer flip.
+                  Random quiz — CDI stays on the aircraft locked when you rolled (or when the pair was first seeded).
+                  Drag that aircraft to see the needle move with its position vs OBS. Exit random only hides this label;
+                  the receiver coupling does not reset. Vary OBS against this layout; map shows course hemispheres only.
                 </span>
                 <button
                   type="button"
@@ -437,14 +453,15 @@ export default function App() {
                   onClick={() => {
                     setTfRandomMode(false);
                   }}
-                  title="Return OBS-change behaviour to the canonical 'A on R-OBS' reseed"
+                  title="Clear random-scenario label (aircraft stay where they are)"
                 >
                   Exit random
                 </button>
               </>
             ) : (
               <span className="tf-fail-actions-hint">
-                New OBS; either A or B is synced to R-OBS, the other to the reciprocal — answer from map + CDI.
+                Changing OBS spins the TO/FROM map (shading + gold course line only). Aircraft icons and radial tags stay
+                put; needle and quiz use the instrument / panel.
               </span>
             )}
           </div>
@@ -508,12 +525,20 @@ export default function App() {
                   )}
 
                   <p className="tf-quiz-exp">
-                    The VOR needle is <strong>Aircraft A&apos;s only</strong>. For the quiz we use the exam setup:
-                    rotate to the OBS heading (under the top lubber), then the way the needle deflects is the way you
-                    would turn to tighten on the course. We pick the aircraft that best matches that manoeuvre toward
-                    either <strong>R-OBS</strong> (top) or its <strong>reciprocal</strong> (bottom) from Aircraft
-                    A&apos;s map hemisphere when the flag is failed.
+                    With both aircraft on the perpendicular candidate radials, set each heading to the{' '}
+                    <strong>OBS lubber</strong> value (same as the top of the course card). The CDI in this panel
+                    matches the <strong>graded aircraft</strong> (A or B). Use needle left/right and position
+                    awareness per the OFF-flag drill: fly toward the needle from that heading to see which aircraft
+                    is on the radial that matches the scenario.
                   </p>
+                  {tfLockedGradedAircraft && (
+                    <p className="tf-quiz-exp">
+                      The panel CDI is tied to <strong>Aircraft {tfLockedGradedAircraft}</strong> for this layout (set
+                      when you entered fail mode or used Random scenario). It updates as you move that aircraft or
+                      change OBS, so deflection always reflects that plane relative to the selected course—not the other
+                      label.
+                    </p>
+                  )}
                   <p className="tf-quiz-exp">
                     <strong>Safety note:</strong> a failed or misleading TO/FROM indication can make you confidently
                     track the wrong leg of the same course line. The CDI still gives correct left/right guidance for
@@ -554,14 +579,12 @@ export default function App() {
                       aircraft: tfTraining.aircraftA.aircraft,
                       heading: tfTraining.aircraftA.heading,
                       label: 'Aircraft A',
-                      courseErrorDeg: tfTraining.aircraftA.courseErrorDeg,
                     },
                     {
                       id: 'B',
                       aircraft: tfTraining.aircraftB.aircraft,
                       heading: tfTraining.aircraftB.heading,
                       label: 'Aircraft B',
-                      courseErrorDeg: tfTraining.aircraftB.courseErrorDeg,
                     },
                   ]
                 : undefined
@@ -578,7 +601,7 @@ export default function App() {
         </div>
 
         <div className="col vor-col">
-          {failToFromFlag && tfTraining ? (
+          {failToFromFlag && tfTraining && tfVorReadout ? (
             <div className="single-tf-vor">
               <div className="vor-clone">
                 <h4 className="vor-mini-title">VOR (TO/FROM failed)</h4>
@@ -586,12 +609,12 @@ export default function App() {
                   hideControls={false}
                   hideReadouts={true}
                   obs={snapshot.obs}
-                  heading={tfTraining.aircraftA.heading}
-                  bearingToStation={tfTraining.aircraftA.bearingToStation}
-                  radial={tfTraining.aircraftA.radial}
-                  dmeNm={tfTraining.aircraftA.dmeNm}
-                  cdi={tfTraining.aircraftA.cdi}
-                  toFrom={tfTraining.aircraftA.toFromGeometry}
+                  heading={tfVorReadout.heading}
+                  bearingToStation={tfVorReadout.bearingToStation}
+                  radial={tfVorReadout.radial}
+                  dmeNm={tfVorReadout.dmeNm}
+                  cdi={tfVorReadout.cdi}
+                  toFrom={tfVorReadout.toFromGeometry}
                   navValid={true}
                   vorFlagsValid={true}
                   inCone={false}
@@ -605,10 +628,10 @@ export default function App() {
                   Aircraft B radial: <strong>R-{formatMagneticThreeDigit360(tfTraining.aircraftB.radial)}°</strong>
                 </p>
                 <p className="vor-cdi-dev">
-                  CDI (Aircraft A):{' '}
+                  CDI (Aircraft {tfTraining.correct} — graded):{' '}
                   <strong>
-                    {Math.abs(tfTraining.aircraftA.courseErrorDeg).toFixed(1)}°{' '}
-                    {tfTraining.aircraftA.cdi < 0 ? 'LEFT' : tfTraining.aircraftA.cdi > 0 ? 'RIGHT' : 'CENTER'}
+                    {Math.abs(tfVorReadout.courseErrorDeg).toFixed(1)}°{' '}
+                    {tfVorReadout.cdi < 0 ? 'LEFT' : tfVorReadout.cdi > 0 ? 'RIGHT' : 'CENTER'}
                   </strong>
                 </p>
               </div>
