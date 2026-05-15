@@ -443,13 +443,15 @@ export default function App() {
         <div className="tf-fail-row">
           <div>
             <h3 className="tf-fail-title">TO/FROM Flag Failure Training Mode</h3>
-            <p className="tf-fail-sub">
-              If the TO/FROM flag is unreliable, the <strong>CDI still tells you</strong> whether the selected course is
-              left or right — but you must use <strong>position awareness</strong> to avoid tracking the wrong course.
-              <strong> All of this</strong> (OFF flag simulation, Aircraft A/B on the map, and the graded quiz scoring)
-              only runs while <strong>Fail TO/FROM Flag</strong> is checked below; turn it off to return to normal
-              simulator behaviour with a working flag.
-            </p>
+            {failToFromFlag && (
+              <p className="tf-fail-sub">
+                If the TO/FROM flag is unreliable, the <strong>CDI still tells you</strong> whether the selected course is
+                left or right — but you must use <strong>position awareness</strong> to avoid tracking the wrong course.
+                <strong> All of this</strong> (OFF flag simulation, Aircraft A/B on the map, and the graded quiz scoring)
+                only runs while <strong>Fail TO/FROM Flag</strong> is checked below; turn it off to return to normal
+                simulator behaviour with a working flag.
+              </p>
+            )}
           </div>
           <label className="tf-fail-toggle">
             <input
