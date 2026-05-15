@@ -107,6 +107,18 @@ describe('buildToFromFailureTrainingScenario', () => {
     expect(sc.correct).toBe('A');
   });
 
+  it('grades Aircraft B when A starts on the reciprocal radial', () => {
+    const sc = buildToFromFailureTrainingScenario({
+      station,
+      obs: 90,
+      dmeNm: 10,
+      aircraftAOnObsRadial: false,
+    });
+    expect(sc.aircraftA.toFromGeometry).toBe('TO');
+    expect(sc.aircraftB.toFromGeometry).toBe('FROM');
+    expect(sc.correct).toBe('B');
+  });
+
   it('defaults both headings to selected OBS for direct comparison', () => {
     const obs = 123;
     const sc = buildToFromFailureTrainingScenario({ station, obs });
@@ -135,7 +147,7 @@ describe('mirrorThroughStation', () => {
 describe('correctAircraftFromGeometry', () => {
   const station = { x: 0, y: 0 };
 
-  it('flips the correct aircraft when the line rotates past 90° from the OBS', () => {
+  it('grades the aircraft on R-OBS regardless of the A/B label', () => {
     const obs = 0;
     const aNorth = { x: 0, y: 10 };
     const bSouth = mirrorThroughStation(station, aNorth);
@@ -147,7 +159,7 @@ describe('correctAircraftFromGeometry', () => {
     const bNorth = mirrorThroughStation(station, aSouth);
     expect(
       correctAircraftFromGeometry({ station, aircraftA: aSouth, aircraftB: bNorth, obs })
-    ).toBe('A');
+    ).toBe('B');
   });
 
   it('keeps grading deterministic on canonical seeds for every OBS in [0, 359]', () => {
@@ -177,7 +189,7 @@ describe('correctAircraftFromGeometry', () => {
       correctAircraftFromGeometry({ station, aircraftA: aNear, aircraftB: bFar, obs })
     ).toBe('A');
 
-    // Reversed: A far on reciprocal, B near on R-OBS → B.
+    // Reversed: A on reciprocal, B on R-OBS → B (closer to the named OBS radial).
     const aFarReciprocal = { x: -ux * 50, y: -uy * 50 };
     const bNearOnObs = { x: ux * 1, y: uy * 1 };
     expect(
@@ -187,7 +199,7 @@ describe('correctAircraftFromGeometry', () => {
         aircraftB: bNearOnObs,
         obs,
       })
-    ).toBe('A');
+    ).toBe('B');
   });
 
   /**
@@ -248,17 +260,9 @@ describe('correctAircraftFromGeometry', () => {
   });
 
   /**
-   * Real-world OBS-change UX scenario the user reported as a "bug":
-   * - Seed scenario at OBS=360: A north (R-360), B south (R-180).
-   * - Student slides OBS to 180 *without* moving aircraft.
-   * - Without the App.tsx reseed, A is now on the TO hemisphere (R-360 vs OBS=180 → 180° apart)
-   *   and B is on the FROM hemisphere (R-180 vs OBS=180 → 0° apart) → quiz answer flips to B.
-   * - With the App.tsx reseed (covered separately), A would be repositioned onto R-180 and stay correct.
-   * This test pins the *raw* geometry behaviour so the reseed-on-OBS-change path is the
-   * *only* thing keeping A as the canonical correct answer; if anyone removes that reseed
-   * and changes OBS, the answer here will (correctly) flip to B and surface the regression.
+   * When OBS changes but aircraft stay fixed, the graded aircraft follows who is on R-OBS.
    */
-  it('reflects a stale layout when OBS changes and aircraft do not move (regression guard)', () => {
+  it('flips the graded aircraft when OBS changes and aircraft do not move', () => {
     const aNorth = { x: 0, y: 10 };
     const bSouth = mirrorThroughStation({ x: 0, y: 0 }, aNorth);
     expect(
@@ -276,26 +280,7 @@ describe('correctAircraftFromGeometry', () => {
         aircraftB: bSouth,
         obs: 180,
       })
-    ).toBe('A');
-  });
-
-  it('matches reported case: OBS 060, A R-235, B R-055 => A', () => {
-    const a = {
-      x: Math.sin((235 * Math.PI) / 180) * 10,
-      y: Math.cos((235 * Math.PI) / 180) * 10,
-    };
-    const b = {
-      x: Math.sin((55 * Math.PI) / 180) * 10,
-      y: Math.cos((55 * Math.PI) / 180) * 10,
-    };
-    expect(
-      correctAircraftFromGeometry({
-        station,
-        aircraftA: a,
-        aircraftB: b,
-        obs: 60,
-      })
-    ).toBe('A');
+    ).toBe('B');
   });
 
   it('matches reported case: OBS 300, A R-280, B R-100 => A', () => {
@@ -317,23 +302,56 @@ describe('correctAircraftFromGeometry', () => {
     ).toBe('A');
   });
 
-  it('matches reported case: OBS 140, A R-307, B R-127 => A (instrument TO side graded to reciprocal)', () => {
-    const a = {
-      x: Math.sin((307 * Math.PI) / 180) * 10,
-      y: Math.cos((307 * Math.PI) / 180) * 10,
+});
+
+describe('coupled-receiver semantics (App locks id; CDI follows that aircraft only)', () => {
+  const station = { x: 0, y: 0 };
+
+  it('swapping A/B positions changes live geometry grade but coupled CDI stays on one aircraft', () => {
+    const aEast = {
+      x: Math.sin((90 * Math.PI) / 180) * 10,
+      y: Math.cos((90 * Math.PI) / 180) * 10,
     };
-    const b = {
-      x: Math.sin((127 * Math.PI) / 180) * 10,
-      y: Math.cos((127 * Math.PI) / 180) * 10,
+    const bWest = {
+      x: Math.sin((270 * Math.PI) / 180) * 10,
+      y: Math.cos((270 * Math.PI) / 180) * 10,
     };
+    const coupled: 'A' | 'B' = 'A';
+    const obs = 0;
+
+    const readCoupledAtA = computeVorReadout({
+      station,
+      aircraft: aEast,
+      heading: obs,
+      obs,
+    });
+    const readCoupledAfterSwap = computeVorReadout({
+      station,
+      aircraft: bWest,
+      heading: obs,
+      obs,
+    });
+
     expect(
-      correctAircraftFromGeometry({
+      correctAircraftFromInterceptCue({
         station,
-        aircraftA: a,
-        aircraftB: b,
-        obs: 140,
+        aircraftA: aEast,
+        aircraftB: bWest,
+        obs,
       })
     ).toBe('A');
+    expect(
+      correctAircraftFromInterceptCue({
+        station,
+        aircraftA: bWest,
+        aircraftB: aEast,
+        obs,
+      })
+    ).toBe('B');
+
+    expect(readCoupledAtA.cdi).toBeLessThan(0);
+    expect(readCoupledAfterSwap.cdi).toBeGreaterThan(0);
+    expect(coupled).toBe('A');
   });
 });
 
@@ -376,6 +394,44 @@ describe('correctAircraftFromInterceptCue', () => {
         obs: 0,
       })
     ).toBe('B');
+  });
+
+  it('OBS 140, A R-307, B R-127 ⇒ B when labels swapped onto exam radials', () => {
+    const a = {
+      x: Math.sin((127 * Math.PI) / 180) * 10,
+      y: Math.cos((127 * Math.PI) / 180) * 10,
+    };
+    const b = {
+      x: Math.sin((307 * Math.PI) / 180) * 10,
+      y: Math.cos((307 * Math.PI) / 180) * 10,
+    };
+    expect(
+      correctAircraftFromInterceptCue({
+        station,
+        aircraftA: a,
+        aircraftB: b,
+        obs: 140,
+      })
+    ).toBe('B');
+  });
+
+  it('OBS 060, A R-235, B R-055 ⇒ A (fly-toward-needle toward each aircraft’s leg)', () => {
+    const a = {
+      x: Math.sin((235 * Math.PI) / 180) * 10,
+      y: Math.cos((235 * Math.PI) / 180) * 10,
+    };
+    const b = {
+      x: Math.sin((55 * Math.PI) / 180) * 10,
+      y: Math.cos((55 * Math.PI) / 180) * 10,
+    };
+    expect(
+      correctAircraftFromInterceptCue({
+        station,
+        aircraftA: a,
+        aircraftB: b,
+        obs: 60,
+      })
+    ).toBe('A');
   });
 
   it('OBS 140, A R-307, B R-127 ⇒ A (exam: OBS lubber then fly toward needle toward reciprocal)', () => {

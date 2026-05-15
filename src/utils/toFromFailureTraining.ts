@@ -89,16 +89,8 @@ export function mirrorThroughStation(station: Position, p: Position): Position {
 }
 
 /**
- * Determine which aircraft is on the side Aircraft A would intercept using
- * TO/FROM-side exam logic.
- *
- * Training intent:
- * - The displayed instrument belongs to Aircraft A, so students solve from A's cue.
- * - If A is FROM side, grade against OBS (top of OBS).
- * - If A is TO side, grade against reciprocal(OBS) (bottom of OBS).
- *
- * Then choose whichever aircraft is closer in angular distance to that target radial.
- * Ties resolve to A for deterministic behavior.
+ * Fallback grader: each aircraft is scored by how close it sits to the radial leg
+ * implied by its own TO/FROM sense (FROM → R-OBS, TO → R-reciprocal).
  */
 export function correctAircraftFromGeometry(params: {
   station: Position;
@@ -107,14 +99,25 @@ export function correctAircraftFromGeometry(params: {
   obs: number;
 }): TrainingAircraftId {
   const { station, aircraftA, aircraftB, obs } = params;
+  const obsN = normalizeHeading(obs);
   const radA = radialFromStation(station, aircraftA);
   const radB = radialFromStation(station, aircraftB);
-  const aToFrom = vorToFromGeometry(radA, obs);
-  const targetRadial = aToFrom === 'FROM' ? normalizeHeading(obs) : reciprocalCourse(obs);
-  const errA = Math.abs(shortestSignedAngleDeg(targetRadial, radA));
-  const errB = Math.abs(shortestSignedAngleDeg(targetRadial, radB));
-  if (errA < errB) return 'A';
-  if (errB < errA) return 'B';
+
+  const legError = (radial: number) => {
+    const tf = vorToFromGeometry(radial, obsN);
+    const target = tf === 'FROM' ? obsN : reciprocalCourse(obsN);
+    return Math.abs(shortestSignedAngleDeg(target, radial));
+  };
+
+  const errA = legError(radA);
+  const errB = legError(radB);
+  if (errA < errB - 1e-9) return 'A';
+  if (errB < errA - 1e-9) return 'B';
+
+  const errAtoObs = Math.abs(shortestSignedAngleDeg(obsN, radA));
+  const errBtoObs = Math.abs(shortestSignedAngleDeg(obsN, radB));
+  if (errAtoObs < errBtoObs - 1e-9) return 'A';
+  if (errBtoObs < errAtoObs - 1e-9) return 'B';
   return 'A';
 }
 
@@ -193,22 +196,26 @@ export function correctAircraftFromInterceptCue(params: {
   aircraftA: Position;
   aircraftB: Position;
   obs: number;
+  /** Lubber headings used for each aircraft’s CDI (default OBS). */
+  headingA?: number;
+  headingB?: number;
 }): TrainingAircraftId {
   const { station, aircraftA, aircraftB, obs } = params;
   const obsN = normalizeHeading(obs);
 
-  const headingFaceObs = obsN;
+  const headingA = normalizeHeading(params.headingA ?? obsN);
+  const headingB = normalizeHeading(params.headingB ?? obsN);
 
   const readAobs = computeVorReadout({
     station,
     aircraft: aircraftA,
-    heading: headingFaceObs,
+    heading: headingA,
     obs: obsN,
   });
   const readBobs = computeVorReadout({
     station,
     aircraft: aircraftB,
-    heading: headingFaceObs,
+    heading: headingB,
     obs: obsN,
   });
 
@@ -228,23 +235,25 @@ export function correctAircraftFromInterceptCue(params: {
     return readAobs.cdi < readBobs.cdi ? 'A' : 'B';
   }
 
-  const aToFrom = vorToFromGeometry(readAobs.radial, obsN);
-  const trackedRadial = aToFrom === 'FROM' ? obsN : reciprocalCourse(obsN);
+  const trackedRadialFor = (radial: number) => {
+    const tf = vorToFromGeometry(radial, obsN);
+    return tf === 'FROM' ? obsN : reciprocalCourse(obsN);
+  };
 
   const scoreA = interceptNeedleCueScore({
     station,
     aircraft: aircraftA,
     obsDeg: obsN,
-    trackedRadialDeg: trackedRadial,
-    headingForObsCoupling: headingFaceObs,
+    trackedRadialDeg: trackedRadialFor(readAobs.radial),
+    headingForObsCoupling: headingA,
     obsCourse: obsN,
   });
   const scoreB = interceptNeedleCueScore({
     station,
     aircraft: aircraftB,
     obsDeg: obsN,
-    trackedRadialDeg: trackedRadial,
-    headingForObsCoupling: headingFaceObs,
+    trackedRadialDeg: trackedRadialFor(readBobs.radial),
+    headingForObsCoupling: headingB,
     obsCourse: obsN,
   });
 
@@ -265,6 +274,19 @@ export function correctAircraftFromInterceptCue(params: {
  * Both start on the OBS course line so CDIs are centered; rotating the line off the
  * OBS course makes their CDIs deflect in opposite senses (mirror through the station).
  */
+/** Rotate a point around the station (plan view, +Y north). */
+function rotateAroundStation(station: Position, p: Position, deltaDeg: number): Position {
+  const dx = p.x - station.x;
+  const dy = p.y - station.y;
+  const θ = (deltaDeg * Math.PI) / 180;
+  const c = Math.cos(θ);
+  const s = Math.sin(θ);
+  return {
+    x: station.x + dx * c - dy * s,
+    y: station.y + dx * s + dy * c,
+  };
+}
+
 export function buildToFromFailureTrainingScenario(params: {
   station: Position;
   obs: number;
@@ -272,14 +294,24 @@ export function buildToFromFailureTrainingScenario(params: {
   heading?: number;
   /** Distance from station (NM) for both aircraft. */
   dmeNm?: number;
+  /** Rotate the A↔B line about the VOR (°). Omit for canonical R-OBS / reciprocal seed. */
+  lineOffsetDeg?: number;
+  /** When false, Aircraft A starts on R-(OBS+180) and B on R-OBS. Default true. */
+  aircraftAOnObsRadial?: boolean;
 }): ToFromFailureTrainingScenario {
   const { station } = params;
   const obs = normalizeHeading(params.obs);
   const heading = normalizeHeading(params.heading ?? obs);
   const dmeNm = Math.max(2, params.dmeNm ?? 10);
+  const onObs = params.aircraftAOnObsRadial !== false;
+  const offset = params.lineOffsetDeg ?? 0;
 
-  const aPos = pointOnRadial(station, obs, dmeNm);
-  const bPos = mirrorThroughStation(station, aPos);
+  let aPos = pointOnRadial(station, onObs ? obs : reciprocalCourse(obs), dmeNm);
+  let bPos = mirrorThroughStation(station, aPos);
+  if (offset !== 0) {
+    aPos = rotateAroundStation(station, aPos, offset);
+    bPos = rotateAroundStation(station, bPos, offset);
+  }
 
   const aircraftA = computeVorReadout({
     station,

@@ -21,6 +21,8 @@ type Props = {
   onInterceptAngle: (a: number) => void;
   /** False when lead &gt; 0 but the map overlay is hidden (e.g. established on target radial). */
   interceptOverlayOnMap: boolean;
+  /** Fail TO/FROM mode: target radial follows OBS (read-only). */
+  targetRadialLockedToObs?: boolean;
 };
 
 export function InterceptPanel({
@@ -33,6 +35,7 @@ export function InterceptPanel({
   interceptAngle,
   onInterceptAngle,
   interceptOverlayOnMap,
+  targetRadialLockedToObs = false,
 }: Props) {
   const rec = recommendedInterceptHeading({
     aircraft: snapshot.aircraft,
@@ -75,7 +78,7 @@ export function InterceptPanel({
       </ol>
 
       <label className="ctl">
-        <span>Radial (°)</span>
+        <span>Radial (°){targetRadialLockedToObs ? ' (OBS)' : ''}</span>
         <input
           type="number"
           min={0}
@@ -83,6 +86,12 @@ export function InterceptPanel({
           value={Math.round(targetRadial)}
           onChange={(e) => onTargetRadial(Number(e.target.value) % 360)}
           className="num wide"
+          disabled={targetRadialLockedToObs}
+          title={
+            targetRadialLockedToObs
+              ? 'Fail TO/FROM mode: intercept target radial matches OBS'
+              : undefined
+          }
         />
       </label>
 

@@ -72,12 +72,11 @@ export default function App() {
   /** Student used "Random scenario"; used for UI hints only (layout is never re-snapped on OBS). */
   const [tfRandomMode, setTfRandomMode] = useState(false);
   /**
-   * Aircraft (A or B) whose receiver drives the CDI + quiz. Set when the training pair is seeded
-   * (enter fail / station move) or when Random scenario rolls; cleared when Fail TO/FROM is off.
-   * Persists through Exit random and drags so the needle tracks that plane’s position vs OBS.
+   * Which aircraft’s receiver drives the VOR CDI and quiz key. Set when the pair is seeded
+   * (enter fail / station move / random scenario); unchanged by drags so the needle tracks
+   * that aircraft’s position vs OBS, not whichever label sits on the “good” radial.
    */
-  const [tfLockedGradedAircraft, setTfLockedGradedAircraft] = useState<'A' | 'B' | null>(null);
-
+  const [tfCoupledAircraft, setTfCoupledAircraft] = useState<'A' | 'B' | null>(null);
   /** Last VOR position used for training A/B — re-seed when the fix moves (new scenario). */
   const trainingStationRef = useRef<{ x: number; y: number } | null>(null);
   /** True while TO/FROM training mode has been entered — used to avoid re-seeding spuriously. */
@@ -99,25 +98,6 @@ export default function App() {
     },
     [loadInitial]
   );
-
-  const interceptRec = recommendedInterceptHeading({
-    aircraft: snapshot.aircraft,
-    station,
-    targetRadial: normalizeHeading(targetRadial),
-    mode: interceptMode,
-    interceptAngleDeg: interceptAngle,
-    currentHeading: snapshot.heading,
-  });
-
-  /** Map intercept aids when lead > 0 and not yet established on the exact radial for inbound/outbound. */
-  const interceptMapActive = useMemo(() => {
-    if (interceptAngle <= 0) return false;
-    return !isEstablishedOnInterceptRadial(
-      snapshot.radial,
-      normalizeHeading(targetRadial),
-      interceptMode
-    );
-  }, [interceptAngle, snapshot.radial, targetRadial, interceptMode]);
 
   const applyGroundSpeedTyped = useCallback((kt: number) => {
     setDirectGroundSpeed(kt);
@@ -150,7 +130,7 @@ export default function App() {
       setTrainingPos(null);
       setTrainingHeadingA(null);
       setTrainingHeadingB(null);
-      setTfLockedGradedAircraft(null);
+      setTfCoupledAircraft(null);
       return;
     }
 
@@ -166,26 +146,36 @@ export default function App() {
     /* Reseed only on first enter or station move — OBS changes leave A/B geography fixed (real-world behaviour). */
     const shouldReseedFromScenario = enteringTraining || stationChanged;
 
-    setTrainingPos((prev) => {
-      if (!shouldReseedFromScenario && prev) return prev;
-      return {
-        A: clampTrainingAircraft(tfSeed.aircraftA.aircraft),
-        B: clampTrainingAircraft(tfSeed.aircraftB.aircraft),
-      };
-    });
-    setTrainingHeadingA((prev) =>
-      enteringTraining || stationChanged || prev == null ? snapshot.obs : prev
-    );
-    setTrainingHeadingB((prev) =>
-      enteringTraining || stationChanged || prev == null ? snapshot.obs : prev
-    );
     if (shouldReseedFromScenario) {
-      setTfLockedGradedAircraft(
+      const lineOffsetDeg = (Math.random() - 0.5) * 48;
+      const swapLabels = Math.random() < 0.5;
+      const a0 = tfSeed.aircraftA.aircraft;
+      const b0 = tfSeed.aircraftB.aircraft;
+      const rot = (p: Position) => {
+        const dx = p.x - st.x;
+        const dy = p.y - st.y;
+        const θ = (lineOffsetDeg * Math.PI) / 180;
+        const c = Math.cos(θ);
+        const s = Math.sin(θ);
+        return {
+          x: st.x + dx * c - dy * s,
+          y: st.y + dx * s + dy * c,
+        };
+      };
+      const aPos = clampTrainingAircraft(rot(swapLabels ? b0 : a0));
+      const bPos = clampTrainingAircraft(rot(swapLabels ? a0 : b0));
+      const hdgObs = snapshot.obs;
+      setTrainingPos({ A: aPos, B: bPos });
+      setTrainingHeadingA(hdgObs);
+      setTrainingHeadingB(hdgObs);
+      setTfCoupledAircraft(
         correctAircraftFromInterceptCue({
-          station,
-          aircraftA: tfSeed.aircraftA.aircraft,
-          aircraftB: tfSeed.aircraftB.aircraft,
-          obs: tfSeed.obs,
+          station: st,
+          aircraftA: aPos,
+          aircraftB: bPos,
+          obs: hdgObs,
+          headingA: hdgObs,
+          headingB: hdgObs,
         })
       );
     }
@@ -304,19 +294,24 @@ export default function App() {
       y: station.y + Math.cos(θB) * distB,
     };
     const obsN = normalizeHeading(newObs);
-    const graded = correctAircraftFromInterceptCue({
-      station,
-      aircraftA: aPos,
-      aircraftB: bPos,
-      obs: obsN,
-    });
-    setTfLockedGradedAircraft(graded);
     setTfRandomMode(true);
     setObs(newObs);
-    setTrainingPos({ A: clampTrainingAircraft(aPos), B: clampTrainingAircraft(bPos) });
+    const aClamped = clampTrainingAircraft(aPos);
+    const bClamped = clampTrainingAircraft(bPos);
+    setTrainingPos({ A: aClamped, B: bClamped });
     const hdgObs = obsN;
     setTrainingHeadingA(hdgObs);
     setTrainingHeadingB(hdgObs);
+    setTfCoupledAircraft(
+      correctAircraftFromInterceptCue({
+        station,
+        aircraftA: aClamped,
+        aircraftB: bClamped,
+        obs: obsN,
+        headingA: hdgObs,
+        headingB: hdgObs,
+      })
+    );
     setToFromQuizChoice(null);
   }, [station, setObs, clampTrainingAircraft]);
 
@@ -334,20 +329,13 @@ export default function App() {
       heading: trainingHeadingB ?? snapshot.obs,
       obs: snapshot.obs,
     });
-    /* CDI + quiz: locked aircraft from seed / random roll; readouts a,b still update every frame from positions. */
-    const liveCorrect = correctAircraftFromInterceptCue({
-      station,
-      aircraftA: trainingPos.A,
-      aircraftB: trainingPos.B,
-      obs: snapshot.obs,
-    });
-    const correct = tfLockedGradedAircraft ?? liveCorrect;
-    const vorInstrument = correct === 'A' ? a : b;
+    const coupled = tfCoupledAircraft ?? 'A';
+    const vorInstrument = coupled === 'A' ? a : b;
     return {
       obs: snapshot.obs,
       aircraftA: a,
       aircraftB: b,
-      correct,
+      correct: coupled,
       vorInstrument,
     };
   }, [
@@ -358,10 +346,51 @@ export default function App() {
     snapshot.obs,
     trainingHeadingA,
     trainingHeadingB,
-    tfLockedGradedAircraft,
+    tfCoupledAircraft,
   ]);
 
   const tfVorReadout = failToFromFlag && tfTraining ? tfTraining.vorInstrument : null;
+
+  const interceptRec = useMemo(
+    () =>
+      recommendedInterceptHeading({
+        aircraft: snapshot.aircraft,
+        station,
+        targetRadial: normalizeHeading(targetRadial),
+        mode: interceptMode,
+        interceptAngleDeg: interceptAngle,
+        currentHeading: snapshot.heading,
+      }),
+    [
+      snapshot.aircraft,
+      snapshot.heading,
+      station,
+      targetRadial,
+      interceptMode,
+      interceptAngle,
+    ]
+  );
+
+  /** Intercept panel and map overlays are off in Fail TO/FROM training mode. */
+  const interceptMapActive = useMemo(() => {
+    if (failToFromFlag || interceptAngle <= 0) return false;
+    return !isEstablishedOnInterceptRadial(
+      snapshot.radial,
+      normalizeHeading(targetRadial),
+      interceptMode
+    );
+  }, [
+    failToFromFlag,
+    interceptAngle,
+    snapshot.radial,
+    targetRadial,
+    interceptMode,
+  ]);
+
+  const mapToFrom =
+    failToFromFlag && tfTraining
+      ? tfTraining.vorInstrument.toFromGeometry
+      : snapshot.toFrom;
 
   return (
     <div className="app">
@@ -431,10 +460,10 @@ export default function App() {
                 setFailToFromFlag(e.target.checked);
                 setToFromQuizChoice(null);
                 setTfRandomMode(false);
-                setTfLockedGradedAircraft(null);
                 if (!e.target.checked) {
                   setTrainingHeadingA(null);
                   setTrainingHeadingB(null);
+                  setTfCoupledAircraft(null);
                 }
               }}
             />{' '}
@@ -461,9 +490,7 @@ export default function App() {
             {tfRandomMode ? (
               <>
                 <span className="tf-fail-actions-hint tf-fail-actions-hint-active">
-                  Random quiz — CDI stays on the aircraft locked when you rolled (or when the pair was first seeded).
-                  Drag that aircraft to see the needle move with its position vs OBS. Exit random only hides this label;
-                  the receiver coupling does not reset. Vary OBS against this layout; map shows course hemispheres only.
+                  Random layout — drag either aircraft; Vary OBS to spin course shading only.
                 </span>
                 <button
                   type="button"
@@ -478,8 +505,7 @@ export default function App() {
               </>
             ) : (
               <span className="tf-fail-actions-hint">
-                Changing OBS spins the TO/FROM map (shading + gold course line only). Aircraft icons and radial tags stay
-                put; needle and quiz use the instrument / panel.
+                Changing OBS spins the TO/FROM map (shading + gold course line only). Aircraft icons stay put.
               </span>
             )}
           </div>
@@ -569,7 +595,7 @@ export default function App() {
             trailRef={trailRef}
             radial={snapshot.radial}
             obs={snapshot.obs}
-            toFrom={snapshot.toFrom}
+            toFrom={mapToFrom}
             failToFromFlag={failToFromFlag}
             hideMainAircraft={failToFromFlag}
             hideLegend={true}
@@ -593,9 +619,17 @@ export default function App() {
                 : undefined
             }
             onMoveExtraAircraft={failToFromFlag ? onMoveTrainingAircraft : undefined}
-            interceptRadial={!failToFromFlag && interceptMapActive ? targetRadial : undefined}
-            interceptHeading={!failToFromFlag && interceptMapActive ? interceptRec.heading : undefined}
-            interceptAngleDeg={!failToFromFlag && interceptMapActive ? interceptAngle : undefined}
+            interceptRadial={
+              !failToFromFlag && interceptMapActive
+                ? normalizeHeading(targetRadial)
+                : undefined
+            }
+            interceptHeading={
+              !failToFromFlag && interceptMapActive ? interceptRec.heading : undefined
+            }
+            interceptAngleDeg={
+              !failToFromFlag && interceptMapActive ? interceptAngle : undefined
+            }
             onMoveAircraft={failToFromFlag ? undefined : moveAircraftTo}
             onAircraftDragActive={setAircraftDragging}
             planMapClampHalfNm={mapViewportHalfNm}
@@ -630,13 +664,6 @@ export default function App() {
                 <p className="vor-cdi-dev">
                   Aircraft B radial: <strong>R-{formatMagneticThreeDigit360(tfTraining.aircraftB.radial)}°</strong>
                 </p>
-                <p className="vor-cdi-dev">
-                  CDI (Aircraft {tfTraining.correct} — graded):{' '}
-                  <strong>
-                    {Math.abs(tfVorReadout.courseErrorDeg).toFixed(1)}°{' '}
-                    {tfVorReadout.cdi < 0 ? 'LEFT' : tfVorReadout.cdi > 0 ? 'RIGHT' : 'CENTER'}
-                  </strong>
-                </p>
               </div>
             </div>
           ) : (
@@ -660,7 +687,7 @@ export default function App() {
           <div className="status-strip card status-strip-simple">
             <span title="Ground speed">GS {Math.round(snapshot.groundSpeed)} kt</span>
             <span title="Cross-track error">XTK {snapshot.courseErrorDeg.toFixed(1)}°</span>
-            {interceptMapActive && (
+            {!failToFromFlag && interceptMapActive && (
               <span
                 title="Suggested magnetic heading to intercept the target radial set in the Intercept panel (track follows heading in this trainer)"
                 className="status-int-hdg"
@@ -684,17 +711,19 @@ export default function App() {
 
         <div className="col side-col">
           <TeachingPanel snapshot={snapshot} />
-          <InterceptPanel
-            station={station}
-            snapshot={snapshot}
-            targetRadial={targetRadial}
-            onTargetRadial={(r) => setTargetRadial(normalizeHeading(r))}
-            mode={interceptMode}
-            onMode={setInterceptMode}
-            interceptAngle={interceptAngle}
-            onInterceptAngle={setInterceptAngle}
-            interceptOverlayOnMap={interceptMapActive}
-          />
+          {!failToFromFlag && (
+            <InterceptPanel
+              station={station}
+              snapshot={snapshot}
+              targetRadial={targetRadial}
+              onTargetRadial={(r) => setTargetRadial(normalizeHeading(r))}
+              mode={interceptMode}
+              onMode={setInterceptMode}
+              interceptAngle={interceptAngle}
+              onInterceptAngle={setInterceptAngle}
+              interceptOverlayOnMap={interceptMapActive}
+            />
+          )}
         </div>
       </main>
 
