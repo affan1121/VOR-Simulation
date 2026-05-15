@@ -278,6 +278,32 @@ export function clampAircraftPositionToStationExtents(
   return { x: station.x + cxx, y: station.y + cyy };
 }
 
+/**
+ * Clamp slant range along the current radial so the point stays inside the plan-map box.
+ * Used for TO/FROM training aircraft (line-through-station drags).
+ */
+export function clampPositionAlongRadialInExtents(
+  station: Position,
+  p: Position,
+  halfEastNm: number,
+  halfNorthNm: number,
+  minNm: number = DME_EDIT_MIN_NM
+): Position {
+  const dx = p.x - station.x;
+  const dy = p.y - station.y;
+  const r = Math.hypot(dx, dy);
+  if (r < 1e-12) {
+    if (minNm <= 0) return { x: station.x, y: station.y };
+    return { x: station.x, y: station.y + minNm };
+  }
+  const radialDeg = radialFromStation(station, p);
+  const maxR = maxDistanceNmAlongRadialInExtents(radialDeg, halfEastNm, halfNorthNm);
+  const rClamped = Math.max(minNm, Math.min(maxR, r));
+  if (Math.abs(rClamped - r) < 1e-9) return p;
+  const scale = rClamped / r;
+  return { x: station.x + dx * scale, y: station.y + dy * scale };
+}
+
 export function navSignalValid(distanceNmVal: number, maxNm = 120): boolean {
   return distanceNmVal <= maxNm;
 }

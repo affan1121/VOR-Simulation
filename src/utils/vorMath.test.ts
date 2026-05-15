@@ -30,6 +30,7 @@ import {
   maxDistanceNmAlongRadialInPlanView,
   maxDistanceNmAlongRadialInExtents,
   clampAircraftPositionToStationExtents,
+  clampPositionAlongRadialInExtents,
   INTERCEPT_LEAD_ANGLE_MAX_DEG,
   INTERCEPT_ESTABLISHED_MAX_ERR_DEG,
   isEstablishedOnInterceptRadial,
@@ -631,6 +632,23 @@ describe('clampAircraftPositionToStationExtents', () => {
     const q = { x: 1, y: -90 };
     const c2 = clampAircraftPositionToStationExtents(st, q, 12, 8);
     expect(c2.y).toBe(-8);
+  });
+});
+
+describe('clampPositionAlongRadialInExtents', () => {
+  const st = { x: 0, y: 0 };
+
+  it('shortens range when beyond the map box along the radial', () => {
+    const p = { x: 50, y: 0 };
+    const c = clampPositionAlongRadialInExtents(st, p, 12, 8);
+    expect(c.x).toBeCloseTo(12, 10);
+    expect(c.y).toBe(0);
+  });
+
+  it('leaves in-range positions unchanged', () => {
+    const p = { x: 3, y: 4 };
+    const c = clampPositionAlongRadialInExtents(st, p, 12, 8);
+    expect(c).toEqual(p);
   });
 });
 

@@ -10,6 +10,7 @@ import { useSimulation } from './hooks/useSimulation';
 import { SCENARIOS } from './scenarios';
 import { generateRandomChallenge } from './randomScenario';
 import {
+  clampPositionAlongRadialInExtents,
   formatMagneticThreeDigit360,
   isEstablishedOnInterceptRadial,
   recommendedInterceptHeading,
@@ -54,6 +55,17 @@ export default function App() {
   const [interceptAngle, setInterceptAngle] = useState(0);
   const [failToFromFlag, setFailToFromFlag] = useState(false);
   const [toFromQuizChoice, setToFromQuizChoice] = useState<'A' | 'B' | null>(null);
+
+  const clampTrainingAircraft = useCallback(
+    (pos: Position) =>
+      clampPositionAlongRadialInExtents(
+        station,
+        pos,
+        mapViewportHalfNm.halfEastNm,
+        mapViewportHalfNm.halfNorthNm
+      ),
+    [station, mapViewportHalfNm]
+  );
   const [trainingPos, setTrainingPos] = useState<{ A: Position; B: Position } | null>(null);
   const [trainingHeadingA, setTrainingHeadingA] = useState<number | null>(null);
   const [trainingHeadingB, setTrainingHeadingB] = useState<number | null>(null);
@@ -157,8 +169,8 @@ export default function App() {
     setTrainingPos((prev) => {
       if (!shouldReseedFromScenario && prev) return prev;
       return {
-        A: { ...tfSeed.aircraftA.aircraft },
-        B: { ...tfSeed.aircraftB.aircraft },
+        A: clampTrainingAircraft(tfSeed.aircraftA.aircraft),
+        B: clampTrainingAircraft(tfSeed.aircraftB.aircraft),
       };
     });
     setTrainingHeadingA((prev) =>
@@ -179,7 +191,21 @@ export default function App() {
     }
     // snapshot.obs: only read when reseeding headings (enter / station); omitting avoids rerunning on every OBS tick.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [failToFromFlag, tfSeed, station]);
+  }, [failToFromFlag, tfSeed, station, clampTrainingAircraft]);
+
+  /** Keep training aircraft on the map when the viewport shrinks (resize). */
+  useEffect(() => {
+    if (!failToFromFlag) return;
+    setTrainingPos((prev) => {
+      if (!prev) return prev;
+      const A = clampTrainingAircraft(prev.A);
+      const B = clampTrainingAircraft(prev.B);
+      if (A.x === prev.A.x && A.y === prev.A.y && B.x === prev.B.x && B.y === prev.B.y) {
+        return prev;
+      }
+      return { A, B };
+    });
+  }, [failToFromFlag, clampTrainingAircraft]);
 
   /**
    * Drag handler for training aircraft. The pair is constrained to a single line
@@ -203,15 +229,16 @@ export default function App() {
    */
   const onMoveTrainingAircraft = useCallback(
     (id: 'A' | 'B', p: Position) => {
+      const clamp = clampTrainingAircraft;
       setTrainingPos((prev) => {
+        const dragged = clamp(p);
         if (!prev) {
-          return id === 'A'
-            ? { A: p, B: mirrorThroughStation(station, p) }
-            : { A: mirrorThroughStation(station, p), B: p };
+          const other = clamp(mirrorThroughStation(station, dragged));
+          return id === 'A' ? { A: dragged, B: other } : { A: other, B: dragged };
         }
 
-        const dx = p.x - station.x;
-        const dy = p.y - station.y;
+        const dx = dragged.x - station.x;
+        const dy = dragged.y - station.y;
         const r = Math.hypot(dx, dy);
 
         const otherKey = id === 'A' ? 'B' : 'A';
@@ -223,7 +250,7 @@ export default function App() {
 
         let newOther: Position;
         if (r < 1e-6) {
-          newOther = oldOther;
+          newOther = clamp(oldOther);
         } else {
           const ux = dx / r;
           const uy = dy / r;
@@ -243,13 +270,13 @@ export default function App() {
             candOpp.x - oldOther.x,
             candOpp.y - oldOther.y
           );
-          newOther = dSame <= dOpp ? candSame : candOpp;
+          newOther = clamp(dSame <= dOpp ? candSame : candOpp);
         }
 
-        return id === 'A' ? { A: p, B: newOther } : { A: newOther, B: p };
+        return id === 'A' ? { A: dragged, B: newOther } : { A: newOther, B: dragged };
       });
     },
-    [station]
+    [station, clampTrainingAircraft]
   );
 
   /**
@@ -286,12 +313,12 @@ export default function App() {
     setTfLockedGradedAircraft(graded);
     setTfRandomMode(true);
     setObs(newObs);
-    setTrainingPos({ A: aPos, B: bPos });
+    setTrainingPos({ A: clampTrainingAircraft(aPos), B: clampTrainingAircraft(bPos) });
     const hdgObs = obsN;
     setTrainingHeadingA(hdgObs);
     setTrainingHeadingB(hdgObs);
     setToFromQuizChoice(null);
-  }, [station, setObs]);
+  }, [station, setObs, clampTrainingAircraft]);
 
   const tfTraining = useMemo(() => {
     if (!failToFromFlag || !tfSeed || !trainingPos) return tfSeed;

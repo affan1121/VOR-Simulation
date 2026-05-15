@@ -270,12 +270,13 @@ export function MapCanvas({
     const screenToWorld = (px: number, py: number, cw: number, ch: number): Position => {
       const cx = cw / 2;
       const cy = ch / 2;
-      let wx = (px - cx) / NM_TO_PX + stationRef.current.x;
-      let wy = -(py - cy) / NM_TO_PX + stationRef.current.y;
+      const st = stationRef.current;
+      let wx = (px - cx) / NM_TO_PX + st.x;
+      let wy = -(py - cy) / NM_TO_PX + st.y;
       const halfE = planMapClampHalfNm?.halfEastNm ?? symLim;
       const halfN = planMapClampHalfNm?.halfNorthNm ?? symLim;
-      wx = Math.max(-halfE, Math.min(halfE, wx));
-      wy = Math.max(-halfN, Math.min(halfN, wy));
+      wx = Math.max(st.x - halfE, Math.min(st.x + halfE, wx));
+      wy = Math.max(st.y - halfN, Math.min(st.y + halfN, wy));
       return { x: wx, y: wy };
     };
 
