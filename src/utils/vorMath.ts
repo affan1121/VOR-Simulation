@@ -9,13 +9,16 @@ import type { Position } from '../types';
 export const INTERCEPT_LEAD_ANGLE_MAX_DEG = 90;
 
 /**
- * Max angular error (°) between your displayed radial (R-###) and the value that counts as
- * “established” for intercept overlay removal — **mode-specific** via {@link isEstablishedOnInterceptRadial}.
+ * Max angular error (°) between your displayed R-### and the target radial to count as established
+ * (intercept lines hide).
  */
 export const INTERCEPT_ESTABLISHED_MAX_ERR_DEG = 2.5;
 
 /** Course-error ° that pegs the CDI (training VOR). */
 export const VOR_CDI_FULL_SCALE_DEG = 10;
+
+/** Drift off the target radial (°) before violet intercept lines reappear (matches CDI full-scale). */
+export const INTERCEPT_OVERLAY_REAPPEAR_ERR_DEG = VOR_CDI_FULL_SCALE_DEG;
 
 /** Lateral deviation-dot spacing on the CDI face (° between marks from centerline). */
 export const VOR_CDI_DOT_STEP_DEG = 2;
@@ -69,20 +72,129 @@ export function isOnInfiniteRadialLine(
 }
 
 /**
- * True when the aircraft is established on the **named** target radial for the intercept mode:
- * **OUTBOUND** — your R-### matches `targetRadialDeg`; **INBOUND** — you are on the inbound side of
- * that radial (R-### = reciprocal of the target).
+ * Angular separation (°) between your displayed R-### and the named target radial (e.g. inbound
+ * R-220 → on R-220, not the reciprocal).
+ */
+export function interceptRadialSeparationDeg(
+  aircraftRadialDeg: number,
+  targetRadialDeg: number
+): number {
+  return Math.abs(
+    shortestSignedAngleDeg(
+      normalizeHeading(targetRadialDeg),
+      normalizeHeading(aircraftRadialDeg)
+    )
+  );
+}
+
+/**
+ * True when your displayed R-### matches the named target radial (inbound or outbound).
+ * Inbound vs outbound only changes the intercept heading to fly, not which R-### counts as on course.
  */
 export function isEstablishedOnInterceptRadial(
+  aircraftRadialDeg: number,
+  targetRadialDeg: number,
+  _mode: InterceptMode,
+  maxErrDeg = INTERCEPT_ESTABLISHED_MAX_ERR_DEG
+): boolean {
+  return interceptRadialSeparationDeg(aircraftRadialDeg, targetRadialDeg) <= maxErrDeg;
+}
+
+/**
+ * Signed separation (°) from the target radial; 0° when your R-### matches the target.
+ */
+export function interceptCourseErrorDeg(
+  aircraftRadialDeg: number,
+  targetRadialDeg: number,
+  _mode: InterceptMode
+): number {
+  return shortestSignedAngleDeg(
+    normalizeHeading(targetRadialDeg),
+    normalizeHeading(aircraftRadialDeg)
+  );
+}
+
+/**
+ * True when the intercept is complete — map/panel violet overlays should hide.
+ */
+export function isInterceptEstablished(
   aircraftRadialDeg: number,
   targetRadialDeg: number,
   mode: InterceptMode,
   maxErrDeg = INTERCEPT_ESTABLISHED_MAX_ERR_DEG
 ): boolean {
-  const t = normalizeHeading(targetRadialDeg);
-  const r = normalizeHeading(aircraftRadialDeg);
-  const ref = mode === 'OUTBOUND' ? t : reciprocalCourse(t);
-  return Math.abs(shortestSignedAngleDeg(ref, r)) <= maxErrDeg;
+  return isEstablishedOnInterceptRadial(
+    aircraftRadialDeg,
+    targetRadialDeg,
+    mode,
+    maxErrDeg
+  );
+}
+
+/**
+ * True when on the reciprocal end of the target radial (opposite leg of the same course line).
+ */
+export function isOnOppositeInterceptLeg(
+  aircraftRadialDeg: number,
+  targetRadialDeg: number,
+  maxErrDeg = INTERCEPT_ESTABLISHED_MAX_ERR_DEG
+): boolean {
+  if (interceptRadialSeparationDeg(aircraftRadialDeg, targetRadialDeg) <= maxErrDeg) {
+    return false;
+  }
+  return (
+    interceptRadialSeparationDeg(
+      aircraftRadialDeg,
+      reciprocalCourse(targetRadialDeg)
+    ) <= maxErrDeg
+  );
+}
+
+/**
+ * Wrong side for intercepting the named radial (OBS = target): the TO hemisphere (blue on the map).
+ * The FROM side (brown) carries the published R-### you are joining.
+ */
+export function isOnWrongInterceptHemisphere(
+  aircraftRadialDeg: number,
+  targetRadialDeg: number,
+  _mode: InterceptMode
+): boolean {
+  return (
+    vorToFromGeometry(
+      normalizeHeading(aircraftRadialDeg),
+      normalizeHeading(targetRadialDeg)
+    ) === 'TO'
+  );
+}
+
+/** Mutable latch for intercept overlay hysteresis (hide at ≤2.5°, re-show after &gt;10° off). */
+export type InterceptOverlayLatch = { suppressed: boolean };
+
+/**
+ * Whether violet intercept map overlays should draw. Hides within {@link INTERCEPT_ESTABLISHED_MAX_ERR_DEG}
+ * of the target R-###; after capture, stays hidden until separation exceeds
+ * {@link INTERCEPT_OVERLAY_REAPPEAR_ERR_DEG} (10°). Also hides on the opposite leg or wrong TO/FROM side.
+ */
+export function shouldShowInterceptMapOverlays(
+  latch: InterceptOverlayLatch,
+  aircraftRadialDeg: number,
+  targetRadialDeg: number,
+  mode: InterceptMode
+): boolean {
+  if (
+    isOnOppositeInterceptLeg(aircraftRadialDeg, targetRadialDeg) ||
+    isOnWrongInterceptHemisphere(aircraftRadialDeg, targetRadialDeg, mode)
+  ) {
+    latch.suppressed = false;
+    return false;
+  }
+
+  const sep = interceptRadialSeparationDeg(aircraftRadialDeg, targetRadialDeg);
+  if (sep <= INTERCEPT_ESTABLISHED_MAX_ERR_DEG) latch.suppressed = true;
+  else if (sep > INTERCEPT_OVERLAY_REAPPEAR_ERR_DEG) latch.suppressed = false;
+  if (sep > INTERCEPT_OVERLAY_REAPPEAR_ERR_DEG) return true;
+  if (latch.suppressed) return false;
+  return sep > INTERCEPT_ESTABLISHED_MAX_ERR_DEG;
 }
 
 /**

@@ -21,6 +21,8 @@ type Props = {
   onInterceptAngle: (a: number) => void;
   /** False when lead &gt; 0 but the map overlay is hidden (e.g. established on target radial). */
   interceptOverlayOnMap: boolean;
+  /** True when displayed R-### matches the target radial (lines may still be latched off). */
+  establishedOnTargetRadial?: boolean;
   /** Fail TO/FROM mode: target radial follows OBS (read-only). */
   targetRadialLockedToObs?: boolean;
 };
@@ -35,6 +37,7 @@ export function InterceptPanel({
   interceptAngle,
   onInterceptAngle,
   interceptOverlayOnMap,
+  establishedOnTargetRadial = false,
   targetRadialLockedToObs = false,
 }: Props) {
   const rec = recommendedInterceptHeading({
@@ -60,8 +63,8 @@ export function InterceptPanel({
       <h3>Intercept</h3>
       <p className="hint">
         Pick the radial you want to join and inbound vs outbound. Set the intercept angle (lead); use{' '}
-        <strong>0°</strong> to hide intercept lines completely. With angle &gt; 0°, lines appear until you are established on
-        the target radial, then the map clears them automatically.
+        <strong>0°</strong> to hide intercept lines completely. With angle &gt; 0°, lines show on the correct TO/FROM side of the
+        target radial; they hide when you capture R-### (until 10° off) or drag to the opposite side of the split.
       </p>
       <ol className="intercept-steps">
         <li>
@@ -160,21 +163,11 @@ export function InterceptPanel({
           </p>
         </div>
       ) : null}
-      {interceptAngle > 0 && !interceptOverlayOnMap ? (
+      {interceptAngle > 0 && establishedOnTargetRadial && !interceptOverlayOnMap ? (
         <p className="intercept-established-note fine" role="status">
-          Established{' '}
-          {mode === 'OUTBOUND' ? (
-            <>
-              <strong>outbound</strong> on <strong>R-{tgtDigits}°</strong>
-            </>
-          ) : (
-            <>
-              <strong>inbound</strong> on that radial — your R-### matches the{' '}
-              <strong>reciprocal</strong> ({formatMagneticThreeDigit360(reciprocalCourse(tgtNorm))}°)
-            </>
-          )}{' '}
-          (within a few degrees). Intercept lines are off the map until you drift away. Set intercept angle to{' '}
-          <strong>0°</strong> to hide help entirely.
+          Established on <strong>R-{tgtDigits}°</strong> ({mode === 'OUTBOUND' ? 'outbound' : 'inbound'} — track{' '}
+          <strong>{establishedHdg}°</strong> once captured). Intercept lines stay off the map until you are more than{' '}
+          <strong>10°</strong> off that radial. Set intercept angle to <strong>0°</strong> to hide help entirely.
         </p>
       ) : null}
       {interceptAngle <= 0 ? (

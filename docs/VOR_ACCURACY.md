@@ -24,10 +24,11 @@ This document maps behaviors in this project to **public, non-proprietary** sour
 - **Reference (AIM):** With a VOT (or equivalent) and the CDI **centered**, a common check is **OBS 000° with a FROM indication** (or **OBS 180° with a TO indication**) — the receiver should show no deviation on that test geometry.
 - **This sim:** For **FROM**, on-course is **radial = OBS**; for **TO**, on-course is **radial = reciprocal(OBS)** (`referenceRadialForCdi`). A dedicated test encodes the **000 FROM / 180 TO** centering case in `src/utils/vorMath.test.ts`.
 
-## Intercept headings
+## Intercept headings and map overlays
 
 - **Reference:** Intercept techniques use a **lead angle** and a turn **toward** the course; the correct **inbound** heading on a given radial is the **reciprocal** of the radial, and **outbound** is the radial itself.
 - **This sim:** `recommendedInterceptHeading` picks the **±lead** heading (inbound or outbound) that **reduces** |cross-track| to the **infinite course line** via `pickInterceptHeadingTowardRadialLine` (`src/utils/vorMath.ts`) — avoiding the classic trap of a fixed “left always” rule when two mathematical solutions exist (e.g. 180° vs 360° on the same line).
+- **Captured / established:** Your displayed **R-###** matches the **named target radial** (e.g. inbound R-220 → on **R-220**). Violet overlays hide within **2.5°**, stay off until **>10°** off, and hide on the **TO** (wrong) side of the OBS split until you return to the **FROM** side.
 
 ## Intentional simplifications (not bugs)
 

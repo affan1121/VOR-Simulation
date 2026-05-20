@@ -34,7 +34,10 @@ import {
   INTERCEPT_LEAD_ANGLE_MAX_DEG,
   INTERCEPT_ESTABLISHED_MAX_ERR_DEG,
   isEstablishedOnInterceptRadial,
+  isInterceptEstablished,
+  interceptCourseErrorDeg,
   isOnInfiniteRadialLine,
+  shouldShowInterceptMapOverlays,
 } from './vorMath';
 
 describe('normalizeHeading', () => {
@@ -77,13 +80,85 @@ describe('isOnInfiniteRadialLine', () => {
 });
 
 describe('isEstablishedOnInterceptRadial', () => {
-  it('OUTBOUND: only the outbound radial counts', () => {
-    expect(isEstablishedOnInterceptRadial(90, 90, 'OUTBOUND')).toBe(true);
-    expect(isEstablishedOnInterceptRadial(270, 90, 'OUTBOUND')).toBe(false);
+  it('established when displayed R-### matches the named target (both modes)', () => {
+    expect(isEstablishedOnInterceptRadial(220, 220, 'INBOUND')).toBe(true);
+    expect(isEstablishedOnInterceptRadial(220, 220, 'OUTBOUND')).toBe(true);
+    expect(isEstablishedOnInterceptRadial(40, 220, 'INBOUND')).toBe(false);
+    expect(isEstablishedOnInterceptRadial(40, 220, 'OUTBOUND')).toBe(false);
   });
-  it('INBOUND: only the inbound (reciprocal) radial counts', () => {
-    expect(isEstablishedOnInterceptRadial(270, 90, 'INBOUND')).toBe(true);
-    expect(isEstablishedOnInterceptRadial(90, 90, 'INBOUND')).toBe(false);
+});
+
+describe('interceptCourseErrorDeg and isInterceptEstablished', () => {
+  it('zero separation on the named target radial', () => {
+    expect(interceptCourseErrorDeg(90, 90, 'OUTBOUND')).toBe(0);
+    expect(interceptCourseErrorDeg(220, 220, 'INBOUND')).toBe(0);
+    expect(isInterceptEstablished(90, 90, 'OUTBOUND')).toBe(true);
+    expect(isInterceptEstablished(220, 220, 'INBOUND')).toBe(true);
+  });
+  it('not established on the opposite side of the same line', () => {
+    expect(isInterceptEstablished(270, 90, 'INBOUND')).toBe(false);
+    expect(isInterceptEstablished(270, 90, 'OUTBOUND')).toBe(false);
+  });
+  it('within tolerance on correct radial counts as established', () => {
+    expect(isInterceptEstablished(92.4, 90, 'OUTBOUND')).toBe(true);
+    expect(isInterceptEstablished(45, 90, 'OUTBOUND')).toBe(false);
+  });
+});
+
+describe('shouldShowInterceptMapOverlays', () => {
+  it('hides on capture, reappears only after 10° off the target radial', () => {
+    const latch = { suppressed: false };
+    expect(shouldShowInterceptMapOverlays(latch, 160, 220, 'INBOUND')).toBe(true);
+    expect(shouldShowInterceptMapOverlays(latch, 220, 220, 'INBOUND')).toBe(false);
+    expect(latch.suppressed).toBe(true);
+    expect(shouldShowInterceptMapOverlays(latch, 228, 220, 'INBOUND')).toBe(false);
+    expect(shouldShowInterceptMapOverlays(latch, 231, 220, 'INBOUND')).toBe(true);
+    expect(latch.suppressed).toBe(false);
+  });
+
+  it('hides on the reciprocal leg (opposite end of the line)', () => {
+    const latch = { suppressed: false };
+    expect(shouldShowInterceptMapOverlays(latch, 40, 220, 'INBOUND')).toBe(false);
+  });
+
+  it('hides on the TO hemisphere anywhere (wrong side of the split)', () => {
+    const latch = { suppressed: false };
+    expect(shouldShowInterceptMapOverlays(latch, 40, 220, 'INBOUND')).toBe(false);
+    expect(shouldShowInterceptMapOverlays(latch, 100, 220, 'INBOUND')).toBe(false);
+    expect(shouldShowInterceptMapOverlays(latch, 220, 220, 'INBOUND')).toBe(false);
+    expect(latch.suppressed).toBe(true);
+  });
+
+  it('lines return when dragged back from wrong side to correct (FROM) side', () => {
+    const latch = { suppressed: true };
+    expect(shouldShowInterceptMapOverlays(latch, 40, 220, 'INBOUND')).toBe(false);
+    expect(latch.suppressed).toBe(false);
+    expect(shouldShowInterceptMapOverlays(latch, 160, 220, 'INBOUND')).toBe(true);
+  });
+});
+
+describe('INBOUND R-220 from R-160 (student scenario)', () => {
+  const st = { x: 0, y: 0 };
+  const ac160 = {
+    x: Math.sin((160 * Math.PI) / 180) * 8,
+    y: Math.cos((160 * Math.PI) / 180) * 8,
+  };
+
+  it('90° lead recommends HDG 310', () => {
+    const got = recommendedInterceptHeading({
+      aircraft: ac160,
+      station: st,
+      targetRadial: 220,
+      mode: 'INBOUND',
+      interceptAngleDeg: 90,
+      currentHeading: 160,
+    });
+    expect(got.heading).toBe(310);
+  });
+
+  it('established on R-220 when on that radial (not reciprocal)', () => {
+    expect(isInterceptEstablished(220, 220, 'INBOUND')).toBe(true);
+    expect(isInterceptEstablished(40, 220, 'INBOUND')).toBe(false);
   });
 });
 

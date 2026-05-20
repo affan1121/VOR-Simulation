@@ -16,7 +16,7 @@ export function StudentGuide() {
         </li>
         <li>
           Turn <strong>intercept angle</strong> above <strong>0°</strong> for intercept lines; they clear when your
-          R-### matches the <strong>outbound</strong> or <strong>inbound (reciprocal)</strong> side you selected.
+          your R-### matches the <strong>target radial</strong> you picked; lines return if you drift more than <strong>10°</strong> off it.
         </li>
         <li>
           Fly the heading in <strong>Intercept</strong> / <strong>INT HDG</strong> until the needle centers, then fly the

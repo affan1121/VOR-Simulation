@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 import type { Position } from '../types';
+import type { InterceptMode } from '../utils/vorMath';
 import {
   distanceNm,
   DME_EDIT_MIN_NM,
@@ -8,6 +9,8 @@ import {
   MAP_PLAN_DME_MARGIN_NM,
   MAP_PLAN_VIEW_HALF_NM,
   MAP_VIEW_NM_TO_PX,
+  radialFromStation,
+  shouldShowInterceptMapOverlays,
 } from '../utils/vorMath';
 
 /** Keep aircraft symbol and labels inside the canvas (pixels from each edge toward center). */
@@ -18,6 +21,10 @@ const MIN_RADIAL_PILL_FROM_VOR_PX = 56;
 
 const NM_TO_PX = MAP_VIEW_NM_TO_PX;
 const VIEW_NM = MAP_PLAN_VIEW_HALF_NM;
+
+/** HDG readout offset ahead of the nose (display only). */
+const HDG_NOSE_PX = 26;
+const HDG_LABEL_AHEAD_PX = 14;
 
 /** Reference radials on the plan-view map (N/E/S/W only). */
 const CARDINAL_RADIALS = [0, 90, 180, 270] as const;
@@ -44,6 +51,10 @@ type Props = {
   hideLegend?: boolean;
   /** Training mode: draw one full radial line through both sides for A/B aircraft. */
   trainingRadialLineDeg?: number;
+  /** Intercept planner inputs — used each paint to hide overlays once on the target radial. */
+  interceptTargetRadial?: number;
+  interceptMode?: InterceptMode;
+  interceptLeadAngle?: number;
   interceptRadial?: number;
   /** Recommended magnetic heading to fly for the intercept (full line drawn through aircraft). */
   interceptHeading?: number;
@@ -174,6 +185,9 @@ export function MapCanvas({
   hideMainAircraft,
   hideLegend,
   trainingRadialLineDeg,
+  interceptTargetRadial,
+  interceptMode,
+  interceptLeadAngle = 0,
   interceptRadial,
   interceptHeading,
   interceptAngleDeg,
@@ -203,11 +217,15 @@ export function MapCanvas({
     hideMainAircraft,
     hideLegend,
     trainingRadialLineDeg,
+    interceptTargetRadial,
+    interceptMode,
+    interceptLeadAngle,
     interceptRadial,
     interceptHeading,
     interceptAngleDeg,
     extraAircraft,
     onMoveExtraAircraft,
+    interceptOverlayLatch: { suppressed: false },
   });
   sceneRef.current = {
     station,
@@ -222,12 +240,20 @@ export function MapCanvas({
     hideMainAircraft,
     hideLegend,
     trainingRadialLineDeg,
+    interceptTargetRadial,
+    interceptMode,
+    interceptLeadAngle,
     interceptRadial,
     interceptHeading,
     interceptAngleDeg,
     extraAircraft,
     onMoveExtraAircraft,
+    interceptOverlayLatch: sceneRef.current.interceptOverlayLatch,
   };
+
+  useEffect(() => {
+    sceneRef.current.interceptOverlayLatch.suppressed = false;
+  }, [interceptTargetRadial, interceptMode, interceptLeadAngle]);
 
   useEffect(() => {
     aircraftRef.current = aircraft;
@@ -402,11 +428,26 @@ export function MapCanvas({
         failToFromFlag,
         hideMainAircraft,
         trainingRadialLineDeg,
+        interceptTargetRadial,
+        interceptMode,
+        interceptLeadAngle,
         interceptRadial,
         interceptHeading,
         interceptAngleDeg,
         extraAircraft,
       } = sceneRef.current;
+
+      const liveRadial = radialFromStation(station, aircraft);
+      const drawInterceptOverlays =
+        (interceptLeadAngle ?? 0) > 0 &&
+        interceptTargetRadial != null &&
+        interceptMode != null &&
+        shouldShowInterceptMapOverlays(
+          sceneRef.current.interceptOverlayLatch,
+          liveRadial,
+          interceptTargetRadial,
+          interceptMode
+        );
 
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const cr = canvas.getBoundingClientRect();
@@ -525,7 +566,7 @@ export function MapCanvas({
       ctx.fillStyle = 'rgba(210, 232, 255, 0.97)';
       ctx.fillText('TO', toLblSx, toLblSy);
 
-      if (interceptRadial !== undefined) {
+      if (drawInterceptOverlays && interceptRadial !== undefined) {
         drawLineAngle(
           interceptRadial,
           'rgba(150, 115, 220, 0.65)',
@@ -560,20 +601,6 @@ export function MapCanvas({
         ctx.strokeStyle = 'rgba(255, 145, 72, 0.92)';
         ctx.lineWidth = 2.85;
         ctx.stroke();
-        const labelAlongRay = lenNm * 0.5;
-        const [rlx, rly] = worldToScreen(
-          station.x + ux * labelAlongRay,
-          station.y + uy * labelAlongRay
-        );
-        const rayLbl = `R-${formatRadialDigits(radial)}°`;
-        ctx.font = '700 12px JetBrains Mono, monospace';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.strokeStyle = 'rgba(8, 10, 14, 0.9)';
-        ctx.lineWidth = 3;
-        ctx.strokeText(rayLbl, rlx, rly);
-        ctx.fillStyle = 'rgba(255, 200, 130, 0.98)';
-        ctx.fillText(rayLbl, rlx, rly);
       }
       }
 
@@ -695,6 +722,19 @@ export function MapCanvas({
         ctx.arc(0, -24, 1.8, 0, Math.PI * 2);
         ctx.fill();
 
+        const hdgTxt = `HDG ${formatMagneticThreeDigit360(headingDeg)}°`;
+        const labelAheadY = -HDG_NOSE_PX - HDG_LABEL_AHEAD_PX;
+        ctx.save();
+        ctx.translate(0, labelAheadY);
+        ctx.rotate(-hRad);
+        ctx.font = '700 9px JetBrains Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle =
+          style === 'MAIN' ? 'rgba(200, 235, 255, 0.98)' : 'rgba(235, 245, 255, 0.96)';
+        ctx.fillText(hdgTxt, 0, 0);
+        ctx.restore();
+
         // Accent: give A/B a dashed outline so it’s obvious they’re training aircraft.
         if (style !== 'MAIN') {
           ctx.setLineDash([5, 4]);
@@ -737,7 +777,7 @@ export function MapCanvas({
       }
 
       /* Full-width intercept track: fly along this heading until the CDI centers on the target radial. */
-      if (interceptHeading !== undefined) {
+      if (drawInterceptOverlays && interceptHeading !== undefined) {
         const spanLen = VIEW_NM * NM_TO_PX * 1.2;
         const irad = (interceptHeading * Math.PI) / 180;
         const sdx = Math.sin(irad) * spanLen;
@@ -778,7 +818,7 @@ export function MapCanvas({
         }
       }
 
-      if (interceptRadial !== undefined) {
+      if (drawInterceptOverlays && interceptRadial !== undefined) {
         const tr = (interceptRadial * Math.PI) / 180;
         const tgx = station.x + Math.sin(tr) * (VIEW_NM - 1.2);
         const tgy = station.y + Math.cos(tr) * (VIEW_NM - 1.2);
@@ -1030,6 +1070,9 @@ export function MapCanvas({
     failToFromFlag,
     hideMainAircraft,
     trainingRadialLineDeg,
+    interceptTargetRadial,
+    interceptMode,
+    interceptLeadAngle,
     interceptRadial,
     interceptHeading,
     interceptAngleDeg,
@@ -1050,12 +1093,15 @@ export function MapCanvas({
           </span>
           <span className="leg fan">gray: cardinal radials (360 / 090 / 180 / 270)</span>
           <span className="leg rad">
-            orange: position radial — ray from VOR toward you with R-###°; pill shows R-###° and TO/FR
+            orange ray: your position radial from the VOR — readout is the dark pill (R-###° and TO/FR)
+          </span>
+          <span className="leg hdg">
+            HDG ahead of nose — change heading in the control panel
           </span>
           <span className="leg obs">OBS on instrument only — map shows boundary + fills</span>
           <span className="leg int">
             violet: target radial · bright violet: intercept heading — hidden when R-### matches the leg you picked
-            (outbound = target; inbound = reciprocal)
+            (hide on R-### match; return after 10° off)
           </span>
           {failToFromFlag && (
             <span className="leg rad">

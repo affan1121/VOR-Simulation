@@ -5,6 +5,8 @@ import { useState } from 'react';
  * or expecting motion without the dev server.
  */
 export function StartHere() {
+  if (import.meta.env.PROD) return null;
+
   const [open, setOpen] = useState(false);
   if (!open) {
     return (

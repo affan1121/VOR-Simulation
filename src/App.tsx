@@ -12,9 +12,10 @@ import { generateRandomChallenge } from './randomScenario';
 import {
   clampPositionAlongRadialInExtents,
   formatMagneticThreeDigit360,
-  isEstablishedOnInterceptRadial,
+  isInterceptEstablished,
   recommendedInterceptHeading,
   normalizeHeading,
+  shouldShowInterceptMapOverlays,
   type InterceptMode,
 } from './utils/vorMath';
 import type { Position, ScenarioId } from './types';
@@ -53,6 +54,7 @@ export default function App() {
   const [targetRadial, setTargetRadial] = useState(90);
   const [interceptMode, setInterceptMode] = useState<InterceptMode>('INBOUND');
   const [interceptAngle, setInterceptAngle] = useState(0);
+  const interceptOverlayLatchRef = useRef({ suppressed: false });
   const [failToFromFlag, setFailToFromFlag] = useState(false);
   const [toFromQuizChoice, setToFromQuizChoice] = useState<'A' | 'B' | null>(null);
 
@@ -371,10 +373,25 @@ export default function App() {
     ]
   );
 
-  /** Intercept panel and map overlays are off in Fail TO/FROM training mode. */
+  useEffect(() => {
+    interceptOverlayLatchRef.current.suppressed = false;
+  }, [targetRadial, interceptMode, interceptAngle]);
+
+  const interceptOnTargetRadial = useMemo(
+    () =>
+      isInterceptEstablished(
+        snapshot.radial,
+        normalizeHeading(targetRadial),
+        interceptMode
+      ),
+    [snapshot.radial, targetRadial, interceptMode]
+  );
+
+  /** Violet map/panel intercept help — hides on capture; returns after 10° off the target R-###. */
   const interceptMapActive = useMemo(() => {
     if (failToFromFlag || interceptAngle <= 0) return false;
-    return !isEstablishedOnInterceptRadial(
+    return shouldShowInterceptMapOverlays(
+      interceptOverlayLatchRef.current,
       snapshot.radial,
       normalizeHeading(targetRadial),
       interceptMode
@@ -621,17 +638,18 @@ export default function App() {
                 : undefined
             }
             onMoveExtraAircraft={failToFromFlag ? onMoveTrainingAircraft : undefined}
+            interceptTargetRadial={normalizeHeading(targetRadial)}
+            interceptMode={interceptMode}
+            interceptLeadAngle={failToFromFlag ? 0 : interceptAngle}
             interceptRadial={
-              !failToFromFlag && interceptMapActive
+              !failToFromFlag && interceptAngle > 0
                 ? normalizeHeading(targetRadial)
                 : undefined
             }
             interceptHeading={
-              !failToFromFlag && interceptMapActive ? interceptRec.heading : undefined
+              !failToFromFlag && interceptAngle > 0 ? interceptRec.heading : undefined
             }
-            interceptAngleDeg={
-              !failToFromFlag && interceptMapActive ? interceptAngle : undefined
-            }
+            interceptAngleDeg={!failToFromFlag && interceptAngle > 0 ? interceptAngle : undefined}
             onMoveAircraft={failToFromFlag ? undefined : moveAircraftTo}
             onAircraftDragActive={setAircraftDragging}
             planMapClampHalfNm={mapViewportHalfNm}
@@ -724,6 +742,7 @@ export default function App() {
               interceptAngle={interceptAngle}
               onInterceptAngle={setInterceptAngle}
               interceptOverlayOnMap={interceptMapActive}
+              establishedOnTargetRadial={interceptOnTargetRadial}
             />
           )}
         </div>
